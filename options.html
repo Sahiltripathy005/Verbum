@@ -135,13 +135,13 @@
             <table class="inventory-table">
               <thead>
                 <tr>
-                  <th width="5%"></th>
-                  <th width="20%">Word</th>
-                  <th width="30%">Meaning</th>
-                  <th width="15%">Tags</th>
-                  <th width="10%">Encounters</th>
-                  <th width="10%">Last Seen</th>
-                  <th width="10%">Actions</th>
+                  <th width="3%"></th>
+                  <th width="25%">Word</th>
+                  <th width="32%">Meaning</th>
+                  <th width="12%">Tags</th>
+                  <th width="11%">Encounters</th>
+                  <th width="11%">Last Seen</th>
+                  <th width="6%">Actions</th>
                 </tr>
               </thead>
               <tbody id="inventory-tbody">
@@ -466,9 +466,9 @@
         <!-- Collections Manager -->
         <div class="panel-box">
           <h3>Collections Manager</h3>
-          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
-            <input type="text" id="new-collection-name" placeholder="New collection..." style="flex: 1; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main);">
-            <button id="btn-create-collection" class="btn btn-primary" style="padding: var(--space-2) var(--space-4); font-size: var(--font-size-caption);">Add</button>
+          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3); width: 100%;">
+            <input type="text" id="new-collection-name" placeholder="New collection..." style="flex: 1; min-width: 0; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main);">
+            <button id="btn-create-collection" class="btn btn-primary" style="padding: var(--space-2) var(--space-4); font-size: var(--font-size-caption); flex-shrink: 0;">Add</button>
           </div>
           <ul id="collections-list" style="list-style: none; display: flex; flex-direction: column; gap: var(--space-2);">
             <!-- Dynamically populated collection items -->
@@ -568,12 +568,13 @@
                 <span class="slider round"></span>
               </label>
             </div>
-            <div class="setting-item">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Open Edit Modal Automatically</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-workflow-edit">
-                <span class="slider round"></span>
-              </label>
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">After Capture</span>
+              <select id="setting-after-capture" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
+                <option value="nothing">Do nothing</option>
+                <option value="popup">Open popup</option>
+                <option value="edit">Open edit modal</option>
+              </select>
             </div>
 
             <!-- Spaced Repetition Settings -->

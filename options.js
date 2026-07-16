@@ -39,6 +39,8 @@ let reviewQueue = [];
 let currentReviewIndex = 0;
 let initialDueCount = 0;
 let activeTab = "inventory";
+let activeDetailWordId = null;
+
 
 
 // DOM Elements - Stats
@@ -135,6 +137,7 @@ function initEventListeners() {
   });
   elFilterTagSelect.addEventListener("change", (e) => {
     selectedTagFilter = e.target.value;
+    renderTagCloud();
     renderInventory();
   });
   elFilterMeaningSelect.addEventListener("change", (e) => {
@@ -172,7 +175,7 @@ function initEventListeners() {
   document.getElementById("setting-notifications").addEventListener("change", saveSettings);
   document.getElementById("setting-workflow-focus").addEventListener("change", saveSettings);
   document.getElementById("setting-workflow-highlight").addEventListener("change", saveSettings);
-  document.getElementById("setting-workflow-edit").addEventListener("change", saveSettings);
+  document.getElementById("setting-after-capture").addEventListener("change", saveSettings);
 
   // New Spaced Repetition Settings
   document.getElementById("setting-capture-goal").addEventListener("input", saveSettings);
@@ -182,6 +185,16 @@ function initEventListeners() {
   document.getElementById("setting-badge-visibility").addEventListener("change", saveSettings);
   document.getElementById("setting-review-notif").addEventListener("change", saveSettings);
   document.getElementById("setting-review-notif-threshold").addEventListener("change", saveSettings);
+
+  // Escape key global listener for modals and inline details
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (elEditModal && elEditModal.style.display === "flex") {
+        closeEditModal();
+      }
+      collapseRowDetails();
+    }
+  });
 
   // Tab Navigation Listeners
   const tabs = document.querySelectorAll(".tab-btn");
@@ -264,6 +277,7 @@ async function loadAndRender() {
       elFilterCollectionSelect.appendChild(opt);
     });
     elFilterCollectionSelect.value = prevColFilterVal;
+    selectedCollectionFilter = elFilterCollectionSelect.value;
 
     calculateStats();
     renderTagSelectors();
@@ -494,6 +508,8 @@ function renderTagSelectors() {
     }
     elFilterTagSelect.appendChild(opt);
   });
+
+  selectedTagFilter = elFilterTagSelect.value;
 }
 
 // Render Leaderboard list
@@ -563,6 +579,7 @@ function renderTagCloud() {
 
 // Render Inventory Table Grid
 function renderInventory() {
+  activeDetailWordId = null;
   let filtered = [...allWords];
 
   // 1. Filter by Search Query
@@ -572,7 +589,7 @@ function renderInventory() {
       const matchWord = w.word.toLowerCase().includes(q);
       const matchMeaning = w.meaning && w.meaning.toLowerCase().includes(q);
       const matchNotes = w.notes && w.notes.toLowerCase().includes(q);
-      const matchTags = w.tags && w.tags.some(tag => tag.toLowerCase().includes(q));
+      const matchTags = Array.isArray(w.tags) && w.tags.some(tag => tag.toLowerCase().includes(q));
       
       const matchCollections = (w.collectionIds || []).some(cid => {
         const col = collections.find(c => c.id === cid);
@@ -589,8 +606,9 @@ function renderInventory() {
 
   // 2. Filter by Tag selection
   if (selectedTagFilter) {
+    const targetTag = selectedTagFilter.toLowerCase();
     filtered = filtered.filter(w => 
-      Array.isArray(w.tags) && w.tags.includes(selectedTagFilter.toLowerCase())
+      Array.isArray(w.tags) && w.tags.some(tag => tag.toLowerCase() === targetTag)
     );
   }
 
@@ -673,7 +691,7 @@ function renderInventory() {
     // Source display
     const sourceHtml = `
       <div style="font-size: 0.75em; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px;">
-        ${wordObj.favicon ? `<img src="${wordObj.favicon}" style="width: 10px; height: 10px; border-radius: 1px;" onerror="this.style.display='none'">` : ''}
+        ${wordObj.favicon ? `<img class="source-favicon" src="${wordObj.favicon}" style="width: 10px; height: 10px; border-radius: 1px;">` : ''}
         <span>${escapeHtml(wordObj.sourceName || 'Direct Capture')}</span>
       </div>
     `;
@@ -742,6 +760,13 @@ function renderInventory() {
     `;
 
     // Click handlers
+    const faviconImg = tr.querySelector(".source-favicon");
+    if (faviconImg) {
+      faviconImg.addEventListener("error", () => {
+        faviconImg.style.display = "none";
+      });
+    }
+
     const playBtn = tr.querySelector(".btn-play-audio-table");
     if (playBtn) {
       playBtn.addEventListener("click", () => {
@@ -784,6 +809,48 @@ function renderInventory() {
 
     tr.querySelector(".act-btn.edit").addEventListener("click", () => openEditModal(wordObj));
     tr.querySelector(".act-btn.delete").addEventListener("click", () => handleDeleteWord(wordObj.id));
+
+    // Add click listeners to tag chips to trigger filter
+    tr.querySelectorAll(".table-tag").forEach(tagSpan => {
+      tagSpan.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tagText = tagSpan.textContent.replace(/^#/, "").trim().toLowerCase();
+        if (selectedTagFilter === tagText) {
+          selectedTagFilter = "";
+        } else {
+          selectedTagFilter = tagText;
+        }
+        elFilterTagSelect.value = selectedTagFilter;
+        renderTagCloud();
+        renderInventory();
+      });
+    });
+
+    // Add click listeners to collection badges to trigger filter
+    tr.querySelectorAll(".col-badge").forEach(colBadge => {
+      colBadge.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const colName = colBadge.textContent.replace(/^📁\s*/, "").trim();
+        const foundCol = collections.find(c => c.name.toLowerCase() === colName.toLowerCase());
+        if (foundCol) {
+          if (selectedCollectionFilter === foundCol.id) {
+            selectedCollectionFilter = "";
+          } else {
+            selectedCollectionFilter = foundCol.id;
+          }
+          elFilterCollectionSelect.value = selectedCollectionFilter;
+          renderInventory();
+        }
+      });
+    });
+
+    // Register click listener to toggle details card
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input") || e.target.closest(".act-btn") || e.target.closest(".table-tag") || e.target.closest(".col-badge")) {
+        return;
+      }
+      toggleRowDetails(wordObj.id, tr);
+    });
 
     elInventoryTbody.appendChild(tr);
   });
@@ -994,7 +1061,7 @@ function loadSettings() {
     notifications: true,
     focusLastCaptured: true,
     highlightLastCaptured: true,
-    openEditModalAutomatically: true,
+    afterCaptureWorkflow: "popup",
     dailyCaptureGoal: 10,
     dailyReviewGoal: 15,
     reviewOrder: "overdue",
@@ -1026,7 +1093,7 @@ function populateSettingsUI(settings) {
   const notifToggle = document.getElementById("setting-notifications");
   const workflowFocusToggle = document.getElementById("setting-workflow-focus");
   const workflowHighlightToggle = document.getElementById("setting-workflow-highlight");
-  const workflowEditToggle = document.getElementById("setting-workflow-edit");
+  const afterCaptureSelect = document.getElementById("setting-after-capture");
   
   const capGoalInput = document.getElementById("setting-capture-goal");
   const revGoalInput = document.getElementById("setting-review-goal");
@@ -1042,7 +1109,7 @@ function populateSettingsUI(settings) {
   if (notifToggle) notifToggle.checked = !!settings.notifications;
   if (workflowFocusToggle) workflowFocusToggle.checked = settings.focusLastCaptured !== false;
   if (workflowHighlightToggle) workflowHighlightToggle.checked = settings.highlightLastCaptured !== false;
-  if (workflowEditToggle) workflowEditToggle.checked = settings.openEditModalAutomatically !== false;
+  if (afterCaptureSelect) afterCaptureSelect.value = settings.afterCaptureWorkflow || "popup";
 
   if (capGoalInput) capGoalInput.value = settings.dailyCaptureGoal || 10;
   if (revGoalInput) revGoalInput.value = settings.dailyReviewGoal || 15;
@@ -1104,7 +1171,7 @@ function saveSettings() {
     notifications: document.getElementById("setting-notifications").checked,
     focusLastCaptured: document.getElementById("setting-workflow-focus").checked,
     highlightLastCaptured: document.getElementById("setting-workflow-highlight").checked,
-    openEditModalAutomatically: document.getElementById("setting-workflow-edit").checked,
+    afterCaptureWorkflow: document.getElementById("setting-after-capture").value,
     dailyCaptureGoal: parseInt(document.getElementById("setting-capture-goal").value) || 10,
     dailyReviewGoal: parseInt(document.getElementById("setting-review-goal").value) || 15,
     reviewOrder: document.getElementById("setting-review-order").value,
@@ -1701,3 +1768,174 @@ function formatRelativeTime(timestamp) {
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
+
+// Option A Inline Expandable Details Panel Controller
+function toggleRowDetails(wordId, rowElement) {
+  // If clicking the currently expanded row, collapse it
+  if (activeDetailWordId === wordId) {
+    collapseRowDetails();
+    return;
+  }
+
+  // Collapse any already expanded row
+  if (activeDetailWordId) {
+    collapseRowDetails();
+  }
+
+  const wordObj = allWords.find(w => w.id === wordId);
+  if (!wordObj) return;
+
+  // Create the detail row
+  const detailTr = document.createElement("tr");
+  detailTr.className = "row-details-tr";
+  detailTr.dataset.forId = wordId;
+
+  const detailTd = document.createElement("td");
+  detailTd.colSpan = 7;
+
+  // Render the content of details
+  const escapedWord = escapeHtml(wordObj.word);
+  const partOfSpeechHtml = wordObj.partOfSpeech 
+    ? `<span style="font-style: italic; color: var(--primary); font-weight: var(--font-weight-semibold); margin-right: var(--space-1);">(${escapeHtml(wordObj.partOfSpeech)})</span>` 
+    : '';
+  const meaningHtml = wordObj.meaning && wordObj.meaning.trim() 
+    ? `${partOfSpeechHtml}${escapeHtml(wordObj.meaning)}` 
+    : `<span style="color: var(--text-muted); font-style: italic;">No definition enriched yet.</span>`;
+
+  const pronunciationHtml = wordObj.phonetic 
+    ? `<span style="color: var(--text-muted); font-family: monospace;">${escapeHtml(wordObj.phonetic)}</span>` 
+    : `<span style="color: var(--text-muted); font-style: italic;">None</span>`;
+
+  const sentenceHtml = wordObj.sentence && wordObj.sentence.trim()
+    ? `<p style="font-size: var(--font-size-body); color: var(--text-main); font-style: italic; border-left: 3px solid var(--primary); padding-left: var(--space-2); margin-top: var(--space-1); line-height: 1.4;">${escapeHtml(wordObj.sentence)}</p>`
+    : `<span style="color: var(--text-muted); font-style: italic;">No context sentence captured.</span>`;
+
+  const notesHtml = wordObj.notes && wordObj.notes.trim()
+    ? `<p style="font-size: var(--font-size-body); color: var(--text-main); white-space: pre-line; background-color: var(--bg-inset); border: 1px dashed var(--border); padding: var(--space-2); border-radius: var(--radius-sm); margin-top: var(--space-1);">${escapeHtml(wordObj.notes)}</p>`
+    : `<span style="color: var(--text-muted); font-style: italic;">No notes added yet.</span>`;
+
+  const synonymsHtml = wordObj.synonyms && wordObj.synonyms.trim()
+    ? `<span style="color: var(--text-main);">${escapeHtml(wordObj.synonyms)}</span>`
+    : `<span style="color: var(--text-muted); font-style: italic;">None</span>`;
+
+  const antonymsHtml = wordObj.antonyms && wordObj.antonyms.trim()
+    ? `<span style="color: var(--text-main);">${escapeHtml(wordObj.antonyms)}</span>`
+    : `<span style="color: var(--text-muted); font-style: italic;">None</span>`;
+
+  // Metadata info: hostname/origin
+  let sourceName = wordObj.sourceName || "Direct Capture";
+  let sourceUrl = wordObj.url || "";
+  const sourceLink = sourceUrl 
+    ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: var(--font-weight-medium); display: inline-flex; align-items: center; gap: 4px;">${escapeHtml(sourceName)} 🔗</a>`
+    : `<span style="color: var(--text-main); font-weight: var(--font-weight-medium);">${escapeHtml(sourceName)}</span>`;
+
+  const dictStatusText = wordObj.dictionaryStatus === "found" 
+    ? "🏅 Enriched via Dictionary API" 
+    : wordObj.dictionaryStatus === "skipped_phrase" 
+    ? "⚠️ Skipped (Phrase)" 
+    : wordObj.dictionaryStatus === "not_found" 
+    ? "❌ No entry found" 
+    : "⚪ Not checked";
+
+  const originHtml = wordObj.origin && wordObj.origin.trim()
+    ? `<p style="font-size: var(--font-size-body); color: var(--text-muted); font-style: italic; margin-top: var(--space-1);">${escapeHtml(wordObj.origin)}</p>`
+    : '';
+
+  detailTd.innerHTML = `
+    <div class="row-details-content">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4);">
+        <!-- Left Column: Core Info & Dictionary Metadata -->
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <div>
+            <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Full Meaning</span>
+            <p style="font-size: var(--font-size-body); color: var(--text-main); line-height: 1.5; font-weight: var(--font-weight-medium);">${meaningHtml}</p>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
+            <div>
+              <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Pronunciation</span>
+              ${pronunciationHtml}
+            </div>
+            <div>
+              <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Status</span>
+              <span style="font-size: var(--font-size-body); color: var(--text-main); font-weight: var(--font-weight-semibold);">${escapeHtml(wordObj.status || 'NEW')}</span>
+            </div>
+          </div>
+
+          ${originHtml ? `
+          <div>
+            <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Etymology / Origin</span>
+            ${originHtml}
+          </div>
+          ` : ''}
+
+          <div>
+            <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Dictionary Metadata</span>
+            <span style="font-size: var(--font-size-caption); color: var(--text-muted); font-weight: var(--font-weight-medium);">${dictStatusText}</span>
+          </div>
+        </div>
+
+        <!-- Right Column: Sentence, Notes, Synonyms/Antonyms -->
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <div>
+            <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Context Sentence</span>
+            ${sentenceHtml}
+          </div>
+
+          <div>
+            <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Usage Notes</span>
+            ${notesHtml}
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
+            <div>
+              <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Synonyms</span>
+              ${synonymsHtml}
+            </div>
+            <div>
+              <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Antonyms</span>
+              ${antonymsHtml}
+            </div>
+          </div>
+
+          <div>
+            <span style="font-size: var(--font-size-label); color: var(--text-muted); font-weight: var(--font-weight-semibold); text-transform: uppercase; display: block; margin-bottom: 2px;">Captured From</span>
+            <span style="font-size: var(--font-size-body);">${sourceLink}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  detailTr.appendChild(detailTd);
+
+  // Insert the detailTr directly after the parent rowElement
+  rowElement.parentNode.insertBefore(detailTr, rowElement.nextSibling);
+  rowElement.classList.add("details-expanded");
+  activeDetailWordId = wordId;
+}
+
+function collapseRowDetails() {
+  if (!activeDetailWordId) return;
+
+  const detailTr = elInventoryTbody.querySelector(`.row-details-tr`);
+  if (detailTr) {
+    const content = detailTr.querySelector(".row-details-content");
+    if (content) {
+      content.style.animation = "detailsFadeOut 180ms ease-out forwards";
+    }
+    setTimeout(() => {
+      if (detailTr.parentNode) {
+        detailTr.parentNode.removeChild(detailTr);
+      }
+    }, 180);
+  }
+
+  const parentRow = elInventoryTbody.querySelector(`tr.details-expanded`);
+  if (parentRow) {
+    parentRow.classList.remove("details-expanded");
+  }
+
+  activeDetailWordId = null;
+}
+

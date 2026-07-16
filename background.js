@@ -27,11 +27,14 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  console.log("WordVault: Context menu clicked. Info:", info);
+  console.log("WordVault LOG (Context Menu): Clicked. info.menuItemId =", info.menuItemId, "info.selectionText =", info.selectionText, "tab =", tab);
   if (info.menuItemId === "save-to-wordvault") {
     const selectedText = info.selectionText;
     if (selectedText && tab) {
+      console.log("WordVault LOG (Context Menu): Calling handleSaveProcess");
       handleSaveProcess(tab, selectedText);
+    } else {
+      console.warn("WordVault LOG (Context Menu): Missing selectedText or tab. selectedText =", selectedText, "tab =", tab);
     }
   }
 });
@@ -92,87 +95,164 @@ chrome.commands.onCommand.addListener((command) => {
  * Falls back to Chrome's native selection if page scripting is restricted.
  * Saves the word and triggers a desktop notification.
  */
+/**
+ * Helper to determine if a tab is displaying a PDF file or using Chrome's native PDF viewer.
+ */
+function isPdfTab(tab) {
+  if (!tab || !tab.url) return false;
+  const url = tab.url.toLowerCase();
+  
+  if (url.includes('.pdf') || url.startsWith('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehxai/')) {
+    return true;
+  }
+  
+  try {
+    const parsed = new URL(tab.url);
+    const pathname = parsed.pathname.toLowerCase();
+    if (pathname.endsWith('.pdf')) {
+      return true;
+    }
+  } catch (e) {}
+  
+  return false;
+}
+
+/**
+ * Ensures that content.js is injected into the specified tab.
+ * If not already present, it attempts dynamic injection.
+ * Calls callback(success).
+ */
+function ensureContentScript(tabId, callback) {
+  console.log("WordVault LOG (ensureContentScript): Pinging Tab ID =", tabId);
+  chrome.tabs.sendMessage(tabId, { action: "PING" }, (response) => {
+    const lastError = chrome.runtime.lastError;
+    console.log("WordVault LOG (ensureContentScript): Ping callback fired. response =", response, "lastError =", lastError);
+    if (lastError) {
+      console.log("WordVault LOG (ensureContentScript): Content script ping failed, injecting content.js. Error =", lastError.message);
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ["content.js"]
+      }, () => {
+        const injectError = chrome.runtime.lastError;
+        if (injectError) {
+          console.error("WordVault LOG (ensureContentScript): Dynamic script injection failed. Error =", injectError.message);
+          callback(false);
+        } else {
+          console.log("WordVault LOG (ensureContentScript): Dynamic script injection succeeded.");
+          callback(true);
+        }
+      });
+    } else {
+      console.log("WordVault LOG (ensureContentScript): Content script ping succeeded.");
+      callback(true);
+    }
+  });
+}
+
+/**
+ * Orchestrates the text collection and storage workflow.
+ * Queries the active tab's content script to extract selection context.
+ * Falls back to Chrome's native selection if page scripting is restricted.
+ * Saves the word and triggers a desktop notification.
+ */
 function handleSaveProcess(tab, fallbackWord) {
-  console.log("WordVault: Starting handleSaveProcess for Tab ID:", tab.id);
+  console.log("WordVault LOG (handleSaveProcess): Starting for Tab ID:", tab ? tab.id : 'undefined', "fallbackWord:", fallbackWord);
+  
+  const isPdf = isPdfTab(tab);
+
+  // Detect if the tab is a PDF page/viewer
+  if (isPdf) {
+    console.log("WordVault LOG (handleSaveProcess): Detected PDF tab. fallbackWord:", fallbackWord);
+    if (fallbackWord && fallbackWord.trim()) {
+      console.log("WordVault LOG (handleSaveProcess): PDF tab saving directly using fallbackWord");
+      saveAndNotify(tab, fallbackWord.trim(), "", tab?.title || "Web Page", tab?.url || "");
+      return;
+    }
+    // Keyboard Shortcut workflow (fallbackWord is absent) proceeds to queryContentScript()
+  }
+
   // Check if tab has a valid URL we can communicate with
   // Restricted chrome://, edge://, or file:// (unless allowed) cannot run content scripts
-  if (!tab || !tab.id || (tab.url && (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")))) {
-    console.log("WordVault: Restricted tab URL, falling back to direct context selection.");
+  if (!tab || !tab.id || (tab.url && !isPdf && (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("edge://") || tab.url.startsWith("about:")))) {
+    console.log("WordVault LOG (handleSaveProcess): Restricted tab URL, falling back to direct context selection. url =", tab?.url);
     // If we have context menu fallback text, save it directly
     if (fallbackWord && fallbackWord.trim()) {
+      console.log("WordVault LOG (handleSaveProcess): Restricted URL saving directly using fallbackWord");
       saveAndNotify(tab, fallbackWord.trim(), "", tab?.title || "Web Page", tab?.url || "");
     } else {
+      console.log("WordVault LOG (handleSaveProcess): Restricted URL but no fallbackWord, showing warning");
       showNotification("WordVault Error", "Cannot capture text on browser system pages.");
     }
     return;
   }
 
   // Ask content script for precise selection and surrounding sentence
-  const queryContentScript = (isRetry = false) => {
-    console.log("WordVault: Message sent (GET_SELECTION) to Tab ID:", tab.id, "isRetry:", isRetry);
-    chrome.tabs.sendMessage(tab.id, { action: "GET_SELECTION" }, (response) => {
-      let word = fallbackWord || "";
-      let sentence = "";
-      let isConnectionError = false;
-      
-      if (chrome.runtime.lastError) {
-        console.warn("WordVault: Messaging channel unavailable:", chrome.runtime.lastError.message);
-        isConnectionError = true;
-      }
+  const queryContentScript = () => {
+    console.log("WordVault LOG (queryContentScript): Ensuring content script is injected.");
+    ensureContentScript(tab.id, (success) => {
+      let isPdf = isPdfTab(tab);
+      let tabUrl = tab?.url || "";
+      let tabTitle = tab?.title || "";
 
-      console.log("WordVault: Response received from content script. Response:", response);
-
-      if (response) {
-        if (response.word) word = response.word;
-        if (response.sentence) sentence = response.sentence;
-      }
-
-      word = word.trim();
-
-      if (!word) {
-        // If content script was not injected and this is the first attempt, try injecting it dynamically
-        if (isConnectionError && !isRetry) {
-          console.log("WordVault: Injecting content.js dynamically into Tab ID:", tab.id);
-          chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ["content.js"]
-          }, () => {
-            if (chrome.runtime.lastError) {
-              console.error("WordVault: Dynamic script injection failed:", chrome.runtime.lastError.message);
-              // Fall back to direct selection if available
-              if (fallbackWord && fallbackWord.trim()) {
-                saveAndNotify(tab, fallbackWord.trim(), "", tab.title || "Web Page", tab.url || "");
-              } else {
-                showNotification("WordVault Error", "Failed to inject content script. Please refresh the page.");
-              }
-            } else {
-              console.log("WordVault: Dynamic script injection succeeded. Retrying selection capture...");
-              queryContentScript(true);
-            }
-          });
+      if (!success) {
+        console.warn("WordVault LOG (queryContentScript): content.js injection/presence failed.");
+        if (fallbackWord && fallbackWord.trim()) {
+          console.log("WordVault LOG (queryContentScript): Injection failed, saving directly using fallbackWord");
+          saveAndNotify(tab, fallbackWord.trim(), "", tabTitle || "Web Page", tabUrl || "");
         } else {
-          // No text selected, or retry failed
-          if (isConnectionError) {
-            showNotification("WordVault", "Please refresh this tab to enable selection capture.");
+          if (isPdf) {
+            showNotification("WordVault Error", "Chrome's built-in PDF viewer does not expose the selected text.");
           } else {
-            showNotification("WordVault Error", "Please select a word or phrase first.");
+            showNotification("WordVault Error", "Failed to inject content script. Please refresh the page.");
           }
         }
         return;
       }
 
-      saveAndNotify(tab, word, sentence, tab.title || "Word Page", tab.url || "");
+      console.log("WordVault LOG (queryContentScript): Content script guaranteed. Sending GET_SELECTION message.");
+      chrome.tabs.sendMessage(tab.id, { action: "GET_SELECTION" }, (response) => {
+        const lastError = chrome.runtime.lastError;
+        console.log("WordVault LOG (queryContentScript): GET_SELECTION response callback fired. response =", response, "lastError =", lastError);
+        
+        let word = fallbackWord || "";
+        let sentence = "";
+
+        if (response) {
+          if (response.word) word = response.word;
+          if (response.sentence) sentence = response.sentence;
+          if (response.isPdf) isPdf = true;
+          if (response.url) tabUrl = response.url;
+          if (response.title) tabTitle = response.title;
+        }
+
+        word = word.trim();
+        console.log("WordVault LOG (queryContentScript): Resulting word =", word, "sentence =", sentence, "isPdf =", isPdf, "tabUrl =", tabUrl, "tabTitle =", tabTitle);
+
+        if (!word) {
+          console.log("WordVault LOG (queryContentScript): Word is empty.");
+          if (isPdf) {
+            showNotification("WordVault Error", "Chrome's built-in PDF viewer does not expose the selected text.");
+          } else {
+            showNotification("WordVault Error", "Please select a word or phrase first.");
+          }
+          return;
+        }
+
+        console.log("WordVault LOG (queryContentScript): Succeeded in obtaining word. Calling saveAndNotify.");
+        saveAndNotify(tab, word, sentence, tabTitle || "Word Page", tabUrl || "");
+      });
     });
   };
 
-  queryContentScript(false);
+  queryContentScript();
 }
 
 /**
  * Saves a word to local storage and triggers the corresponding notification.
  */
 function saveAndNotify(tab, word, sentence, pageTitle, url) {
-  console.log("WordVault: saveWord called for word:", word);
+  console.log("WordVault LOG (saveAndNotify): Sourced arguments. word =", word, "sentence =", sentence, "pageTitle =", pageTitle, "url =", url);
+  console.log("WordVault LOG (saveAndNotify): Calling saveWord");
   saveWord({
     word: word,
     sentence: sentence,
@@ -180,19 +260,49 @@ function saveAndNotify(tab, word, sentence, pageTitle, url) {
     url: url
   })
   .then(async ({ status, word: savedWord }) => {
-    console.log("WordVault: saveWord succeeded. Status:", status, "Saved Object:", savedWord);
+    console.log("WordVault LOG (saveAndNotify): saveWord promise resolved. status =", status, "savedWord =", savedWord);
+    
+    // Retrieve workflow settings and trigger after-capture popup action
+    chrome.storage.local.get("settings", (data) => {
+      const settings = data.settings || {};
+      const workflow = settings.afterCaptureWorkflow || "popup";
+      
+      if (workflow === "popup") {
+        chrome.storage.local.set({ focusLastOnOpen: true }, () => {
+          setTimeout(() => {
+            if (chrome.action && chrome.action.openPopup) {
+              chrome.action.openPopup().catch((err) => {
+                console.error("WordVault background: openPopup failed:", err);
+              });
+            }
+          }, 150);
+        });
+      } else if (workflow === "edit") {
+        chrome.storage.local.set({ editLastOnOpen: true }, () => {
+          setTimeout(() => {
+            if (chrome.action && chrome.action.openPopup) {
+              chrome.action.openPopup().catch((err) => {
+                console.error("WordVault background: openPopup failed:", err);
+              });
+            }
+          }, 150);
+        });
+      }
+    });
     
     // Automatically trigger background definition enrichment if meaning is missing
     if (!savedWord.meaning || !savedWord.meaning.trim()) {
       try {
+        console.log("WordVault LOG (saveAndNotify): Triggering fetchWordDefinition for", savedWord.word);
         const enriched = await fetchWordDefinition(savedWord.word);
         if (enriched) {
+          console.log("WordVault LOG (saveAndNotify): fetchWordDefinition succeeded. enriched =", enriched);
           await updateWord(savedWord.id, enriched);
           // Merge enriched properties into savedWord reference for notifications
           Object.assign(savedWord, enriched);
         }
       } catch (err) {
-        console.info("WordVault background: auto dictionary enrichment failed:", err.message);
+        console.info("WordVault LOG (saveAndNotify): auto dictionary enrichment failed:", err.message);
       }
     }
 
@@ -201,24 +311,36 @@ function saveAndNotify(tab, word, sentence, pageTitle, url) {
       messageText = `✓ Saved "${savedWord.word}"! Dictionary lookup skipped for phrases.`;
     }
     
+    console.log("WordVault LOG (saveAndNotify): Deciding toast/system notification. tab =", tab, "url =", url);
     // Check if we have a valid tab and can send a message to content.js
-    if (tab && tab.id && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://") && !tab.url.startsWith("edge://") && !tab.url.startsWith("about:")) {
-      console.log("WordVault background.js: Sending SHOW_TOAST message to Tab ID:", tab.id);
-      chrome.tabs.sendMessage(tab.id, {
-        action: "SHOW_TOAST",
-        text: messageText
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn("WordVault background.js: Failed to send SHOW_TOAST message, falling back to system notification:", chrome.runtime.lastError.message);
+    if (tab && tab.id && url && !url.startsWith("chrome://") && !url.startsWith("chrome-extension://") && !url.startsWith("edge://") && !url.startsWith("about:")) {
+      console.log("WordVault LOG (saveAndNotify): Ensuring content script is injected before toast.");
+      ensureContentScript(tab.id, (success) => {
+        if (success) {
+          console.log("WordVault LOG (saveAndNotify): Sending SHOW_TOAST message to Tab ID:", tab.id, "messageText =", messageText);
+          chrome.tabs.sendMessage(tab.id, {
+            action: "SHOW_TOAST",
+            text: messageText
+          }, (response) => {
+            const lastError = chrome.runtime.lastError;
+            console.log("WordVault LOG (saveAndNotify): SHOW_TOAST response callback fired. response =", response, "lastError =", lastError);
+            if (lastError) {
+              console.warn("WordVault LOG (saveAndNotify): Failed to send SHOW_TOAST message, falling back to system notification. Error =", lastError.message);
+              triggerSystemNotification(status, savedWord);
+            }
+          });
+        } else {
+          console.log("WordVault LOG (saveAndNotify): Could not ensure content script, falling back to system notification.");
           triggerSystemNotification(status, savedWord);
         }
       });
     } else {
+      console.log("WordVault LOG (saveAndNotify): Tab not eligible for inline toast, calling triggerSystemNotification. url =", url);
       triggerSystemNotification(status, savedWord);
     }
   })
   .catch((error) => {
-    console.error("WordVault Error: Save failed", error);
+    console.error("WordVault LOG (saveAndNotify): saveWord promise rejected. Error =", error);
     showNotification("WordVault Error", "Failed to save: " + error.message);
   });
 }

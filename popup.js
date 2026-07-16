@@ -60,47 +60,45 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Handle keyboard workflow trigger
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(["editLastOnOpen", "lastCapturedWordId", "settings"], (result) => {
+    chrome.storage.local.get(["editLastOnOpen", "focusLastOnOpen", "lastCapturedWordId", "settings"], (result) => {
       const urlParams = new URLSearchParams(window.location.search);
       const focusParam = urlParams.get("focus") === "last";
-      const editLastOnOpen = result.editLastOnOpen || focusParam;
       
-      if (editLastOnOpen) {
-        // Set opened for editing flag
-        window.wasOpenedForEditing = true;
-
-        // Clear the storage flag immediately so clicking doesn't re-trigger it
-        chrome.storage.local.remove("editLastOnOpen");
+      const editLastOnOpen = result.editLastOnOpen || focusParam;
+      const focusLastOnOpen = result.focusLastOnOpen;
+      
+      if (editLastOnOpen || focusLastOnOpen) {
+        if (editLastOnOpen) {
+          window.wasOpenedForEditing = true;
+          chrome.storage.local.remove("editLastOnOpen");
+        }
+        if (focusLastOnOpen) {
+          chrome.storage.local.remove("focusLastOnOpen");
+        }
 
         const settings = result.settings || {
           focusLastCaptured: true,
           highlightLastCaptured: true,
-          openEditModalAutomatically: true
+          afterCaptureWorkflow: "popup"
         };
 
         const lastCapturedWordId = result.lastCapturedWordId;
-
         if (!lastCapturedWordId) {
           showToast("No recently captured word.");
           return;
         }
 
-        // Locate word object
         const wordObj = allWords.find(w => w.id === lastCapturedWordId);
         if (!wordObj) {
           showToast("No recently captured word.");
           return;
         }
 
-        // Check setting: focusLastCaptured
         if (settings.focusLastCaptured !== false) {
-          // Find card element
           const cardEl = document.querySelector(`.word-card[data-id="${lastCapturedWordId}"]`);
           if (cardEl) {
-            // Scroll smoothly
             cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
 
-            // Soft glow highlight
             if (settings.highlightLastCaptured !== false) {
               cardEl.classList.add("last-captured-glow");
               setTimeout(() => {
@@ -109,9 +107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
           }
 
-          // Open edit modal automatically
-          if (settings.openEditModalAutomatically !== false) {
-            // Wait slightly for scroll to begin/finish before showing modal
+          if (editLastOnOpen) {
             setTimeout(() => {
               openEditModal(wordObj);
             }, 200);
@@ -123,9 +119,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Local preview fallback
     const focusParam = new URLSearchParams(window.location.search).get("focus") === "last";
     const editLastOnOpen = localStorage.getItem("editLastOnOpen") === "true" || focusParam;
-    if (editLastOnOpen) {
-      window.wasOpenedForEditing = true;
-      localStorage.removeItem("editLastOnOpen");
+    const focusLastOnOpen = localStorage.getItem("focusLastOnOpen") === "true";
+    
+    if (editLastOnOpen || focusLastOnOpen) {
+      if (editLastOnOpen) {
+        window.wasOpenedForEditing = true;
+        localStorage.removeItem("editLastOnOpen");
+      }
+      if (focusLastOnOpen) {
+        localStorage.removeItem("focusLastOnOpen");
+      }
 
       const lastCapturedWordId = localStorage.getItem("lastCapturedWordId");
       if (!lastCapturedWordId) {
@@ -145,9 +148,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         cardEl.classList.add("last-captured-glow");
         setTimeout(() => cardEl.classList.remove("last-captured-glow"), 2000);
       }
-      setTimeout(() => {
-        openEditModal(wordObj);
-      }, 200);
+      
+      if (editLastOnOpen) {
+        setTimeout(() => {
+          openEditModal(wordObj);
+        }, 200);
+      }
     }
   }
 
@@ -196,7 +202,7 @@ function initEventListeners() {
     if (e.key === "Escape") {
       if (elEditModal && elEditModal.style.display === "flex") {
         closeEditModal();
-      } else if (window.wasOpenedForEditing) {
+      } else {
         window.close();
       }
     }
@@ -346,7 +352,7 @@ function createWordCard(wordObj) {
 
   // Source display
   const faviconHtml = wordObj.favicon
-    ? `<img class="source-favicon" src="${wordObj.favicon}" style="width: 14px; height: 14px; border-radius: 2px; vertical-align: middle;" onerror="this.style.display='none'">`
+    ? `<img class="source-favicon" src="${wordObj.favicon}" style="width: 14px; height: 14px; border-radius: 2px; vertical-align: middle;">`
     : '';
   const sourceHtml = `
     <div class="card-source" style="display: flex; align-items: center; gap: 6px; font-size: var(--font-size-caption); color: var(--text-muted);">
@@ -427,6 +433,13 @@ function createWordCard(wordObj) {
   `;
 
   // Attach card event listeners
+  const faviconImg = card.querySelector(".source-favicon");
+  if (faviconImg) {
+    faviconImg.addEventListener("error", () => {
+      faviconImg.style.display = "none";
+    });
+  }
+
   const playBtn = card.querySelector(".btn-play-audio");
   if (playBtn) {
     playBtn.addEventListener("click", () => {
@@ -740,12 +753,12 @@ function loadSettings() {
         notifications: true,
         focusLastCaptured: true,
         highlightLastCaptured: true,
-        openEditModalAutomatically: true
+        afterCaptureWorkflow: "popup"
       };
       // Ensure defaults for workflow settings exist
       if (settings.focusLastCaptured === undefined) settings.focusLastCaptured = true;
       if (settings.highlightLastCaptured === undefined) settings.highlightLastCaptured = true;
-      if (settings.openEditModalAutomatically === undefined) settings.openEditModalAutomatically = true;
+      if (settings.afterCaptureWorkflow === undefined) settings.afterCaptureWorkflow = "popup";
       
       applySettings(settings);
     });
@@ -758,7 +771,7 @@ function loadSettings() {
       notifications: true,
       focusLastCaptured: true,
       highlightLastCaptured: true,
-      openEditModalAutomatically: true
+      afterCaptureWorkflow: "popup"
     };
     applySettings({ ...defaultSettings, ...settings });
   }

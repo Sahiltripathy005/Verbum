@@ -347,7 +347,9 @@ export async function findWord(wordText) {
 }
 
 export async function saveWord({ word, sentence, pageTitle, url }) {
+  console.log("WordVault LOG (storage.js - saveWord): Sourced arguments. word =", word, "sentence =", sentence, "pageTitle =", pageTitle, "url =", url);
   if (!word || !word.trim()) {
+    console.error("WordVault LOG (storage.js - saveWord): No word provided!");
     throw new Error("No word provided");
   }
 

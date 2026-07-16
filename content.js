@@ -102,9 +102,14 @@ function getSelectionData() {
     sentence = word;
   }
   
+  const isPdf = document.contentType === "application/pdf" || !!document.querySelector('embed[type="application/pdf"]');
+  
   return {
     word: word,
-    sentence: sentence
+    sentence: sentence,
+    isPdf: isPdf,
+    url: window.location.href,
+    title: document.title
   };
 }
 
@@ -112,10 +117,12 @@ let pageToastElement = null;
 let pageToastTimeout = null;
 
 // Display a beautiful, self-contained HUD toast directly on the active webpage
+// Display a beautiful, self-contained HUD toast directly on the active webpage
 function showInPageToast(message) {
-  console.log("Toast requested");
+  console.log("WordVault LOG (content.js): showInPageToast called with message =", message);
   
   if (!pageToastElement) {
+    console.log("WordVault LOG (content.js): Creating new pageToastElement DOM node.");
     pageToastElement = document.createElement("div");
     pageToastElement.id = "wordvault-inpage-toast";
     
@@ -154,7 +161,9 @@ function showInPageToast(message) {
     `;
     
     document.body.appendChild(pageToastElement);
-    console.log("Toast element created");
+    console.log("WordVault LOG (content.js): Toast element created and appended to document.body.");
+  } else {
+    console.log("WordVault LOG (content.js): Reusing existing pageToastElement.");
   }
   
   // Set the message
@@ -162,6 +171,7 @@ function showInPageToast(message) {
   
   // Reset any active fade-out timeout
   if (pageToastTimeout) {
+    console.log("WordVault LOG (content.js): Clearing active toast fade-out timeout.");
     clearTimeout(pageToastTimeout);
   }
   
@@ -169,28 +179,32 @@ function showInPageToast(message) {
   pageToastElement.offsetHeight;
   
   // Make toast visible
+  console.log("WordVault LOG (content.js): Starting CSS transition to show toast.");
   pageToastElement.style.opacity = "1";
   pageToastElement.style.transform = "translateX(-50%) translateY(0)";
-  console.log("Toast displayed");
   
   pageToastTimeout = setTimeout(() => {
+    console.log("WordVault LOG (content.js): Hiding toast after timeout.");
     pageToastElement.style.opacity = "0";
     pageToastElement.style.transform = "translateX(-50%) translateY(12px)";
-    console.log("Toast removed");
   }, 2000);
 }
 
 // Listen for messages from the background service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("WordVault Content Script: Received message", message);
+  console.log("WordVault LOG (content.js): Received message =", message);
   if (message.action === "GET_SELECTION") {
     const selectionData = getSelectionData();
-    console.log("WordVault Content Script: Calculated selection data", selectionData);
-    console.log("WordVault Content Script: Calling sendResponse...");
+    console.log("WordVault LOG (content.js): Calculated selection data =", selectionData);
     sendResponse(selectionData);
+    return false; // Synchronous response
   } else if (message.action === "SHOW_TOAST") {
+    console.log("WordVault LOG (content.js): SHOW_TOAST message matches. Calling showInPageToast.");
     showInPageToast(message.text);
     sendResponse({ status: "success" });
+    return false; // Synchronous response
+  } else if (message.action === "PING") {
+    sendResponse({ status: "pong" });
+    return false; // Synchronous response
   }
-  return true; // Keep message channel open for asynchronous response
 });
