@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WordVault Dashboard</title>
+  <link rel="stylesheet" href="options.css">
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="dashboard-wrapper">
+    <!-- Top Header Navigation -->
+    <header class="dashboard-header">
+      <div class="header-brand">
+        <div class="logo-box">V</div>
+        <div class="title-sub">
+          <h1>WordVault Studio</h1>
+          <span class="sub-text">Your local vocabulary control center</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-export-all" class="btn btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export Backup
+        </button>
+        <button id="btn-import-all" class="btn btn-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Import Backup
+        </button>
+        <input type="file" id="file-import-opt" accept=".json" style="display: none;">
+      </div>
+    </header>
+
+    <!-- Stats Grid -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon purple">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5V3.5A2.5 2.5 0 0 1 6.5 1H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5z"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Total Words</span>
+          <h2 id="stat-total" class="stat-value">0</h2>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon yellow">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Active Learning</span>
+          <h2 id="stat-favorites" class="stat-value">0</h2>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon teal">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Unique Tags</span>
+          <h2 id="stat-tags" class="stat-value">0</h2>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon blue">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Most Encounters</span>
+          <h2 id="stat-most-enc" class="stat-value">-</h2>
+          <span id="stat-most-enc-count" class="stat-sub">0 times</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Workspace Grid -->
+    <div class="workspace-grid">
+      <!-- Main Content Area: Word Manager -->
+      <main class="main-content-panel">
+        <!-- Tab Navigation Bar -->
+        <div class="dashboard-tabs" style="display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); margin-bottom: var(--space-4);">
+          <button class="tab-btn active" data-tab="inventory" style="background: none; border: none; padding: var(--space-2) var(--space-4); color: var(--text-muted); font-family: inherit; font-size: var(--font-size-body); font-weight: var(--font-weight-medium); cursor: pointer; border-radius: var(--radius-md); transition: var(--t-fast); outline: none;">Inventory</button>
+          <button class="tab-btn" data-tab="review" style="background: none; border: none; padding: var(--space-2) var(--space-4); color: var(--text-muted); font-family: inherit; font-size: var(--font-size-body); font-weight: var(--font-weight-medium); cursor: pointer; border-radius: var(--radius-md); transition: var(--t-fast); outline: none; display: flex; align-items: center; gap: var(--space-1);">Spaced Review <span id="tab-due-count" class="tab-badge" style="display: none; background-color: var(--danger); color: white; border-radius: var(--radius-round); font-size: var(--font-size-label); padding: 2px 6px; font-weight: var(--font-weight-bold);">0</span></button>
+          <button class="tab-btn" data-tab="analytics" style="background: none; border: none; padding: var(--space-2) var(--space-4); color: var(--text-muted); font-family: inherit; font-size: var(--font-size-body); font-weight: var(--font-weight-medium); cursor: pointer; border-radius: var(--radius-md); transition: var(--t-fast); outline: none;">Analytics & Goals</button>
+          <button class="tab-btn" data-tab="badges" style="background: none; border: none; padding: var(--space-2) var(--space-4); color: var(--text-muted); font-family: inherit; font-size: var(--font-size-body); font-weight: var(--font-weight-medium); cursor: pointer; border-radius: var(--radius-md); transition: var(--t-fast); outline: none;">Streak & Badges</button>
+          <button class="tab-btn" data-tab="activity" style="background: none; border: none; padding: var(--space-2) var(--space-4); color: var(--text-muted); font-family: inherit; font-size: var(--font-size-body); font-weight: var(--font-weight-medium); cursor: pointer; border-radius: var(--radius-md); transition: var(--t-fast); outline: none;">Activity Timeline</button>
+        </div>
+
+        <!-- TAB CONTENT: INVENTORY -->
+        <div id="tab-content-inventory" class="tab-content-pane active">
+          <div class="panel-header">
+            <h2>Vocabulary Inventory</h2>
+            <div class="search-filters" style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+              <div class="search-box">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-inventory" placeholder="Search words, meanings, or notes...">
+              </div>
+              
+              <select id="filter-collection-select">
+                <option value="">All Collections</option>
+              </select>
+
+              <select id="filter-status-select">
+                <option value="">All Statuses</option>
+                <option value="NEW">New</option>
+                <option value="LEARNING">Learning</option>
+                <option value="REVIEW">Review</option>
+                <option value="MASTERED">Mastered</option>
+              </select>
+
+              <select id="filter-tag-select">
+                <option value="">All Tags</option>
+              </select>
+
+              <select id="filter-meaning-select">
+                <option value="">All Meanings</option>
+                <option value="missing">Meaning Missing</option>
+                <option value="available">Meaning Available</option>
+              </select>
+
+              <select id="sort-select">
+                <option value="recent">Last Seen (Newest)</option>
+                <option value="created-desc">Date Added (Newest)</option>
+                <option value="created-asc">Date Added (Oldest)</option>
+                <option value="alphabetical">Word (A-Z)</option>
+                <option value="encounters">Encounters (High-Low)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Inventory List -->
+          <div class="inventory-table-wrapper">
+            <table class="inventory-table">
+              <thead>
+                <tr>
+                  <th width="5%"></th>
+                  <th width="20%">Word</th>
+                  <th width="30%">Meaning</th>
+                  <th width="15%">Tags</th>
+                  <th width="10%">Encounters</th>
+                  <th width="10%">Last Seen</th>
+                  <th width="10%">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventory-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+            
+            <div id="table-empty-state" class="table-empty" style="display: none;">
+              <div class="empty-icon">📂</div>
+              <h3>No matching vocabulary items</h3>
+              <p>Modify your search criteria or tags filter to see results.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: SPACED REVIEW -->
+        <div id="tab-content-review" class="tab-content-pane" style="display: none;">
+          <!-- Today's Review Stats Banner -->
+          <div class="review-stats-banner" style="display: flex; gap: var(--space-4); background-color: var(--bg-card); border: 1px solid var(--border); padding: var(--space-4); border-radius: var(--radius-lg); margin-bottom: var(--space-4); align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="display: flex; gap: var(--space-5);">
+              <div>
+                <span style="font-size: var(--font-size-caption); color: var(--text-muted);">Due Today</span>
+                <h3 id="rev-due-today" style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--text-main);">0</h3>
+              </div>
+              <div>
+                <span style="font-size: var(--font-size-caption); color: var(--text-muted);">Completed</span>
+                <h3 id="rev-completed" style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--success);">0</h3>
+              </div>
+              <div>
+                <span style="font-size: var(--font-size-caption); color: var(--text-muted);">Remaining</span>
+                <h3 id="rev-remaining" style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--text-main);">0</h3>
+              </div>
+            </div>
+            <div style="flex: 1; min-width: 150px; max-width: 300px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-1); font-size: var(--font-size-caption); color: var(--text-muted);">
+                <span>Today's Progress</span>
+                <span id="rev-progress-pct">0%</span>
+              </div>
+              <div style="background-color: var(--bg-inset); height: 8px; border-radius: var(--radius-round); overflow: hidden; width: 100%;">
+                <div id="rev-progress-bar" style="background-color: var(--success); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Flashcard Display Area -->
+          <div id="flashcard-container" style="background-color: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-8) var(--space-6); min-height: 350px; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; text-align: center; box-shadow: var(--shadow-md);">
+            <!-- Word display (Front) -->
+            <div id="card-front" style="display: flex; flex-direction: column; align-items: center; gap: var(--space-3); width: 100%;">
+              <div id="card-front-collection-badge" class="badge" style="background-color: var(--primary-glow); color: var(--primary); padding: 4px 12px; border-radius: var(--radius-round); font-size: var(--font-size-caption); font-weight: var(--font-weight-medium);">General</div>
+              <h1 id="card-front-word" style="font-size: 3rem; font-weight: var(--font-weight-bold); color: var(--text-main); margin: var(--space-2) 0;">loading...</h1>
+              <div id="card-front-phonetic" style="font-size: var(--font-size-title); color: var(--text-muted); font-style: italic;"></div>
+              <button id="btn-reveal-card" class="btn btn-primary" style="margin-top: var(--space-6); padding: var(--space-3) var(--space-6); font-size: var(--font-size-title); font-weight: var(--font-weight-medium); cursor: pointer; display: flex; gap: var(--space-2); align-items: center;">
+                Reveal Answer <kbd style="background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px; font-size: var(--font-size-label);">Space</kbd>
+              </button>
+            </div>
+
+            <!-- Meaning display (Back) -->
+            <div id="card-back" style="display: none; flex-direction: column; align-items: center; gap: var(--space-4); width: 100%; max-width: 600px;">
+              <div id="card-back-collection-badge" class="badge" style="background-color: var(--primary-glow); color: var(--primary); padding: 4px 12px; border-radius: var(--radius-round); font-size: var(--font-size-caption); font-weight: var(--font-weight-medium);">General</div>
+              <h1 id="card-back-word" style="font-size: 2.2rem; font-weight: var(--font-weight-bold); color: var(--text-main); margin-bottom: 0;">loading...</h1>
+              <div style="display: flex; gap: var(--space-2); align-items: center;">
+                <span id="card-back-pos" style="font-size: var(--font-size-caption); color: var(--primary); font-weight: var(--font-weight-semibold); text-transform: uppercase;"></span>
+                <span id="card-back-phonetic" style="font-size: var(--font-size-body); color: var(--text-muted); font-style: italic;"></span>
+              </div>
+              
+              <hr style="width: 100%; border: none; border-top: 1px solid var(--border); margin: var(--space-2) 0;">
+
+              <div style="display: flex; flex-direction: column; gap: var(--space-3); width: 100%; text-align: left;">
+                <div>
+                  <span style="font-size: var(--font-size-caption); color: var(--text-muted); font-weight: var(--font-weight-semibold); display: block; margin-bottom: 2px;">Definition</span>
+                  <p id="card-back-meaning" style="font-size: var(--font-size-title); color: var(--text-main); line-height: 1.5; font-weight: var(--font-weight-medium);"></p>
+                </div>
+
+                <div id="card-back-sentence-box">
+                  <span style="font-size: var(--font-size-caption); color: var(--text-muted); font-weight: var(--font-weight-semibold); display: block; margin-bottom: 2px;">Context Sentence</span>
+                  <p id="card-back-sentence" style="font-size: var(--font-size-body); color: var(--text-main); font-style: italic; background-color: var(--bg-inset); padding: var(--space-3); border-radius: var(--radius-md); border-left: 3px solid var(--primary); line-height: 1.4;"></p>
+                </div>
+
+                <div id="card-back-synonyms-box">
+                  <span style="font-size: var(--font-size-caption); color: var(--text-muted); font-weight: var(--font-weight-semibold); display: block; margin-bottom: 2px;">Synonyms</span>
+                  <p id="card-back-synonyms" style="font-size: var(--font-size-body); color: var(--text-main);"></p>
+                </div>
+
+                <div id="card-back-notes-box">
+                  <span style="font-size: var(--font-size-caption); color: var(--text-muted); font-weight: var(--font-weight-semibold); display: block; margin-bottom: 2px;">Usage Notes</span>
+                  <p id="card-back-notes" style="font-size: var(--font-size-body); color: var(--text-main); white-space: pre-line; background-color: rgba(245, 158, 11, 0.05); border: 1px dashed rgba(245, 158, 11, 0.2); padding: var(--space-3); border-radius: var(--radius-md);"></p>
+                </div>
+              </div>
+
+              <hr style="width: 100%; border: none; border-top: 1px solid var(--border); margin: var(--space-2) 0;">
+
+              <!-- Rating Quality Buttons -->
+              <div style="display: flex; flex-direction: column; gap: var(--space-3); width: 100%; align-items: center; margin-top: var(--space-2);">
+                <span style="font-size: var(--font-size-caption); color: var(--text-muted); font-weight: var(--font-weight-medium);">How well did you remember this word?</span>
+                <div style="display: flex; gap: var(--space-3); width: 100%; justify-content: center; flex-wrap: wrap;">
+                  <button class="btn btn-rate" data-rate="1" style="background-color: var(--danger); color: white; border: none; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; transition: var(--t-fast); display: flex; align-items: center; gap: 6px;">
+                    Again <kbd style="background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px; font-size: var(--font-size-label);">1</kbd>
+                  </button>
+                  <button class="btn btn-rate" data-rate="2" style="background-color: var(--warning); color: white; border: none; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; transition: var(--t-fast); display: flex; align-items: center; gap: 6px;">
+                    Hard <kbd style="background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px; font-size: var(--font-size-label);">2</kbd>
+                  </button>
+                  <button class="btn btn-rate" data-rate="3" style="background-color: var(--primary); color: white; border: none; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; transition: var(--t-fast); display: flex; align-items: center; gap: 6px;">
+                    Good <kbd style="background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px; font-size: var(--font-size-label);">3</kbd>
+                  </button>
+                  <button class="btn btn-rate" data-rate="4" style="background-color: var(--success); color: white; border: none; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; transition: var(--t-fast); display: flex; align-items: center; gap: 6px;">
+                    Easy <kbd style="background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px; font-size: var(--font-size-label);">4</kbd>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty State / All Caught Up -->
+            <div id="card-empty" style="display: none; flex-direction: column; align-items: center; gap: var(--space-3);">
+              <span style="font-size: 4rem;">🎉</span>
+              <h2 style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--text-main);">All caught up!</h2>
+              <p style="font-size: var(--font-size-body); color: var(--text-muted); max-width: 400px; margin-bottom: var(--space-4);">You have completed all scheduled vocabulary reviews for today. Capture more words to continue learning!</p>
+            </div>
+          </div>
+          
+          <!-- Keyboard Shortcuts Help Cheat Sheet inside Spaced Review tab -->
+          <div style="margin-top: var(--space-4); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border); background-color: var(--bg-inset); font-size: var(--font-size-caption); color: var(--text-muted); text-align: center;">
+            💡 <strong>Keyboard Shortcuts:</strong> Press <kbd style="background: var(--bg-card); border: 1px solid var(--border); padding: 2px 5px; border-radius: 3px;">Space</kbd> to reveal answer, <kbd style="background: var(--bg-card); border: 1px solid var(--border); padding: 2px 5px; border-radius: 3px;">1</kbd>-<kbd style="background: var(--bg-card); border: 1px solid var(--border); padding: 2px 5px; border-radius: 3px;">4</kbd> to rate card, and <kbd style="background: var(--bg-card); border: 1px solid var(--border); padding: 2px 5px; border-radius: 3px;">Enter</kbd> to proceed.
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: ANALYTICS & GOALS -->
+        <div id="tab-content-analytics" class="tab-content-pane" style="display: none;">
+          <!-- Goal Progress Bars -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-5);">
+            <div class="panel-box" style="margin-bottom: 0;">
+              <h3 style="margin-bottom: var(--space-2);">Daily Capture Goal</h3>
+              <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-2);">
+                <span id="goal-capture-progress-text" style="font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--text-main);">0 / 10 captured</span>
+                <span id="goal-capture-pct" style="font-size: var(--font-size-body); font-weight: var(--font-weight-bold); color: var(--primary);">0%</span>
+              </div>
+              <div style="background-color: var(--bg-inset); height: 10px; border-radius: var(--radius-round); overflow: hidden; margin-bottom: var(--space-2);">
+                <div id="goal-capture-bar" style="background-color: var(--primary); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
+              </div>
+              <span id="goal-capture-remaining" style="font-size: var(--font-size-caption); color: var(--text-muted);">10 more words to reach goal</span>
+            </div>
+
+            <div class="panel-box" style="margin-bottom: 0;">
+              <h3 style="margin-bottom: var(--space-2);">Daily Review Goal</h3>
+              <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-2);">
+                <span id="goal-review-progress-text" style="font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--text-main);">0 / 15 reviewed</span>
+                <span id="goal-review-pct" style="font-size: var(--font-size-body); font-weight: var(--font-weight-bold); color: var(--success);">0%</span>
+              </div>
+              <div style="background-color: var(--bg-inset); height: 10px; border-radius: var(--radius-round); overflow: hidden; margin-bottom: var(--space-2);">
+                <div id="goal-review-bar" style="background-color: var(--success); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
+              </div>
+              <span id="goal-review-remaining" style="font-size: var(--font-size-caption); color: var(--text-muted);">15 reviews remaining to reach goal</span>
+            </div>
+          </div>
+
+          <!-- Analytics Dashboard Widgets Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-5);">
+            <div class="stat-card" style="padding: var(--space-4);">
+              <div class="stat-info">
+                <span class="stat-label">Captured Today</span>
+                <h2 id="an-captured-today" class="stat-value">0</h2>
+              </div>
+            </div>
+            <div class="stat-card" style="padding: var(--space-4);">
+              <div class="stat-info">
+                <span class="stat-label">Captured This Week</span>
+                <h2 id="an-captured-week" class="stat-value">0</h2>
+              </div>
+            </div>
+            <div class="stat-card" style="padding: var(--space-4);">
+              <div class="stat-info">
+                <span class="stat-label">Reviewed Today</span>
+                <h2 id="an-reviewed-today" class="stat-value">0</h2>
+              </div>
+            </div>
+            <div class="stat-card" style="padding: var(--space-4);">
+              <div class="stat-info">
+                <span class="stat-label">Review Accuracy</span>
+                <h2 id="an-review-accuracy" class="stat-value">0%</h2>
+              </div>
+            </div>
+            <div class="stat-card" style="padding: var(--space-4);">
+              <div class="stat-info">
+                <span class="stat-label">Avg Ease Factor</span>
+                <h2 id="an-avg-ease" class="stat-value">2.5</h2>
+              </div>
+            </div>
+            <div class="stat-card" style="padding: var(--space-4);">
+              <div class="stat-info">
+                <span class="stat-label">Avg Interval</span>
+                <h2 id="an-avg-interval" class="stat-value">1d</h2>
+              </div>
+            </div>
+          </div>
+
+          <!-- Collection & Source Distributions -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4);">
+            <div class="panel-box">
+              <h3>Top Collections</h3>
+              <div id="an-collections-list" style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2);">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <div class="panel-box">
+              <h3>Top Context Sources</h3>
+              <div id="an-sources-list" style="display: flex; flex-direction: column; gap: var(--space-3); margin-top: var(--space-2);">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Extra Stats -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); margin-top: var(--space-4);">
+            <div class="panel-box">
+              <h3>Dictionary Enrichment Success Rate</h3>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); margin-top: var(--space-2);">
+                <span style="font-size: var(--font-size-body); color: var(--text-muted);">Enriched / Saved</span>
+                <span id="an-dict-ratio" style="font-size: var(--font-size-body); font-weight: var(--font-weight-bold); color: var(--text-main);">0 / 0</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: var(--font-size-body); color: var(--text-muted);">Success Rate</span>
+                <span id="an-dict-rate" style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--primary);">0%</span>
+              </div>
+            </div>
+            <div class="panel-box">
+              <h3>Review Completion Stats</h3>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); margin-top: var(--space-2);">
+                <span style="font-size: var(--font-size-body); color: var(--text-muted);">All-time Completed Reviews</span>
+                <span id="an-total-reviews" style="font-size: var(--font-size-body); font-weight: var(--font-weight-bold); color: var(--text-main);">0</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: var(--font-size-body); color: var(--text-muted);">Daily Goal Completion Rate</span>
+                <span id="an-goal-rate" style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--success);">0%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: STREAK & BADGES -->
+        <div id="tab-content-badges" class="tab-content-pane" style="display: none;">
+          <!-- Streak Header Card -->
+          <div style="display: flex; gap: var(--space-4); background-color: var(--bg-card); border: 1px solid var(--border); padding: var(--space-5); border-radius: var(--radius-lg); margin-bottom: var(--space-4); align-items: center; flex-wrap: wrap;">
+            <div style="font-size: 3rem;">🔥</div>
+            <div>
+              <h2 style="font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); color: var(--text-main); margin-bottom: 2px;">Learning Streak</h2>
+              <p style="font-size: var(--font-size-body); color: var(--text-muted);">Keep learning or reviewing words daily to grow your streak!</p>
+            </div>
+            <div style="display: flex; gap: var(--space-6); margin-left: auto;">
+              <div style="text-align: center;">
+                <span style="font-size: var(--font-size-caption); color: var(--text-muted);">Current Streak</span>
+                <h1 id="streak-current-val" style="font-size: var(--font-size-display); font-weight: var(--font-weight-bold); color: var(--warning);">0 days</h1>
+              </div>
+              <div style="text-align: center;">
+                <span style="font-size: var(--font-size-caption); color: var(--text-muted);">Longest Streak</span>
+                <h1 id="streak-longest-val" style="font-size: var(--font-size-display); font-weight: var(--font-weight-bold); color: var(--text-main);">0 days</h1>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar Streak Heatmap -->
+          <div class="panel-box" style="margin-bottom: var(--space-5);">
+            <h3>Engagement Heatmap (Last 12 Weeks)</h3>
+            <div style="overflow-x: auto; padding: var(--space-2) 0;">
+              <div id="streak-heatmap-container" style="display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); gap: 3px; min-width: max-content; margin-top: var(--space-3); margin-bottom: var(--space-2);">
+                <!-- 12 columns of 7 days = 84 cells. Populated dynamically -->
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; font-size: var(--font-size-label); color: var(--text-muted);">
+              <span>Less</span>
+              <div style="width: 10px; height: 10px; background-color: var(--bg-inset); border-radius: 2px;"></div>
+              <div style="width: 10px; height: 10px; background-color: rgba(129, 140, 248, 0.25); border-radius: 2px;"></div>
+              <div style="width: 10px; height: 10px; background-color: rgba(129, 140, 248, 0.5); border-radius: 2px;"></div>
+              <div style="width: 10px; height: 10px; background-color: rgba(129, 140, 248, 0.75); border-radius: 2px;"></div>
+              <div style="width: 10px; height: 10px; background-color: var(--primary); border-radius: 2px;"></div>
+              <span>More</span>
+            </div>
+          </div>
+
+          <!-- Badges Grid -->
+          <div class="panel-box">
+            <h3>Unlocked Achievements & Badges</h3>
+            <div id="badges-grid-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-4); margin-top: var(--space-3);">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: ACTIVITY TIMELINE -->
+        <div id="tab-content-activity" class="tab-content-pane" style="display: none;">
+          <div class="panel-box">
+            <h3>Recent Activity Log</h3>
+            <div style="position: relative; padding-left: var(--space-4); margin-top: var(--space-4);">
+              <!-- Vertical timeline bar -->
+              <div style="position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background-color: var(--border);"></div>
+              <div id="timeline-list" style="display: flex; flex-direction: column; gap: var(--space-5);">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Sidebar Panel: Insights -->
+      <aside class="sidebar-panel">
+        <!-- Dictionary Bulk Operations -->
+        <div class="panel-box">
+          <h3>Dictionary Tools</h3>
+          <button id="btn-bulk-fetch" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: var(--font-size-body); cursor: pointer; gap: 8px;">
+            ✨ Fetch Missing Meanings
+          </button>
+          <div id="bulk-fetch-progress" style="display: none; margin-top: var(--space-3); font-size: var(--font-size-caption); color: var(--text-muted);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-1);">
+              <span>Enriching progress</span>
+              <span id="bulk-progress-text">0 / 0</span>
+            </div>
+            <div style="background-color: var(--bg-app); height: 4px; border-radius: var(--radius-round); overflow: hidden; width: 100%;">
+              <div id="bulk-progress-bar" style="background-color: var(--primary); height: 100%; width: 0%; transition: width 0.2s linear;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Collections Manager -->
+        <div class="panel-box">
+          <h3>Collections Manager</h3>
+          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
+            <input type="text" id="new-collection-name" placeholder="New collection..." style="flex: 1; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main);">
+            <button id="btn-create-collection" class="btn btn-primary" style="padding: var(--space-2) var(--space-4); font-size: var(--font-size-caption);">Add</button>
+          </div>
+          <ul id="collections-list" style="list-style: none; display: flex; flex-direction: column; gap: var(--space-2);">
+            <!-- Dynamically populated collection items -->
+          </ul>
+        </div>
+
+        <!-- Chronological Limits -->
+        <div class="panel-box">
+          <h3>History Bounds</h3>
+          <div class="bounds-list">
+            <div class="bound-item">
+              <span class="bound-label">Newest Addition</span>
+              <div id="bound-newest" class="bound-val">-</div>
+            </div>
+            <div class="bound-item">
+              <span class="bound-label">Oldest Addition</span>
+              <div id="bound-oldest" class="bound-val">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="panel-box">
+          <h3>Encounter Leaderboard</h3>
+          <ol id="leaderboard-list" class="leaderboard-list">
+            <!-- Dynamically populated -->
+          </ol>
+        </div>
+
+        <!-- Tag Explorer -->
+        <div class="panel-box">
+          <h3>Tag Explorer</h3>
+          <div id="tag-cloud" class="tag-cloud">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Tag Distribution -->
+        <div class="panel-box">
+          <h3>Tag Distribution</h3>
+          <div id="tag-distribution" class="tag-distribution-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Encounter Distribution -->
+        <div class="panel-box">
+          <h3>Encounter Distribution</h3>
+          <div id="encounter-distribution">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        
+        <!-- Settings Control Panel -->
+        <div class="panel-box">
+          <h3>Settings</h3>
+          <div class="settings-list">
+            <div class="setting-item">
+              <span class="setting-label">Compact Mode</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-compact">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label">Dark Mode</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-dark">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label">Animations</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-animations">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label">Notifications</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-notifications">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="setting-item" style="border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-3);">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Focus Last Captured Word</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-workflow-focus">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Highlight Last Captured Word</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-workflow-highlight">
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Open Edit Modal Automatically</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-workflow-edit">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <!-- Spaced Repetition Settings -->
+            <div class="setting-item" style="border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-3); flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Daily Capture Goal</span>
+              <input type="number" id="setting-capture-goal" min="1" max="100" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body);">
+            </div>
+            
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Daily Review Goal</span>
+              <input type="number" id="setting-review-goal" min="1" max="500" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body);">
+            </div>
+
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Review Sorting Queue</span>
+              <select id="setting-review-order" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
+                <option value="overdue">Overdue First</option>
+                <option value="difficulty">Hardest First</option>
+                <option value="encounters">Highest Encounters First</option>
+                <option value="newest">Newest First</option>
+              </select>
+            </div>
+
+            <div class="setting-item">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Show Review Badge on Icon</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-show-badge">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div class="setting-item">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Badge Achievements Visibility</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-badge-visibility">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div class="setting-item">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Review Due Notifications</span>
+              <label class="switch">
+                <input type="checkbox" id="setting-review-notif">
+                <span class="slider round"></span>
+              </label>
+            </div>
+
+            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Notification Due Threshold</span>
+              <select id="setting-review-notif-threshold" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
+                <option value="5">5 words due</option>
+                <option value="10">10 words due</option>
+                <option value="20">20 words due</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Status Toast Notification -->
+    <div id="toast" class="toast" style="display: none;"></div>
+
+    <!-- Edit Dialog Modal (Same design style as popup modal) -->
+    <div id="edit-modal" class="modal" style="display: none;">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="drag-handle"></div>
+        <div class="modal-header">
+          <h2>Edit Vocabulary Card</h2>
+          <button id="modal-close" class="close-btn">&times;</button>
+        </div>
+        <form id="edit-form" class="modal-form">
+          <input type="hidden" id="edit-id">
+          
+          <div class="form-group">
+            <label for="edit-word">Word</label>
+            <input type="text" id="edit-word" readonly disabled>
+          </div>
+
+          <div class="form-group">
+            <label for="edit-meaning">Meaning</label>
+            <textarea id="edit-meaning" rows="3" placeholder="Define the word..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="edit-synonyms">Synonyms</label>
+            <input type="text" id="edit-synonyms" placeholder="e.g. happy, joyful">
+          </div>
+
+          <div class="form-group">
+            <label for="edit-tags">Tags (comma-separated)</label>
+            <input type="text" id="edit-tags" placeholder="e.g. academic, vocabulary">
+          </div>
+
+          <div class="form-group">
+            <label for="edit-notes">Usage Notes / Examples</label>
+            <textarea id="edit-notes" rows="4" placeholder="Context notes or sentence examples..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="edit-status">Learning Status</label>
+            <select id="edit-status" style="width: 100%; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+              <option value="NEW">New</option>
+              <option value="LEARNING">Learning</option>
+              <option value="REVIEW">Review</option>
+              <option value="MASTERED">Mastered</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Collections</label>
+            <div id="edit-collections-list" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); padding: var(--space-2); background-color: var(--bg-inset); border-radius: var(--radius-md); border: 1px solid var(--border);"></div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btn-modal-cancel" class="btn btn-secondary">Cancel</button>
+            <button type="submit" id="btn-modal-save" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

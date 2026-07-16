@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WordVault</title>
+  <link rel="stylesheet" href="popup.css">
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo">V</div>
+        <h1>WordVault</h1>
+      </div>
+      <div class="header-actions">
+        <button id="btn-options" title="Open Dashboard" class="icon-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M3 20h9M3 4h18M3 12h18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Search and Actions Bar -->
+    <section class="search-section">
+      <div class="search-wrapper">
+        <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="search-input" placeholder="Search word, meaning, tags...">
+        <button id="btn-clear-search" class="clear-btn" style="display: none;">&times;</button>
+      </div>
+      <div class="filter-actions">
+        <div class="filter-dropdowns" style="display: flex; gap: var(--space-2);">
+          <select id="filter-collection-popup" class="filter-select" style="background-color: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-round); padding: 4px 12px; font-family: inherit; font-size: var(--font-size-caption); cursor: pointer; outline: none;">
+            <option value="">All Collections</option>
+          </select>
+          <select id="filter-status-popup" class="filter-select" style="background-color: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-round); padding: 4px 12px; font-family: inherit; font-size: var(--font-size-caption); cursor: pointer; outline: none;">
+            <option value="">All Statuses</option>
+            <option value="NEW">New</option>
+            <option value="LEARNING">Learning</option>
+            <option value="REVIEW">Review</option>
+            <option value="MASTERED">Mastered</option>
+          </select>
+        </div>
+        <div class="import-export-btns">
+          <button id="btn-import" class="action-link-btn" title="Import JSON">Import</button>
+          <button id="btn-export" class="action-link-btn" title="Export JSON">Export</button>
+        </div>
+      </div>
+      <input type="file" id="file-import" accept=".json" style="display: none;">
+    </section>
+
+    <!-- Word List View -->
+    <main class="word-list-container">
+      <div id="word-list" class="word-list">
+        <!-- Word cards will be dynamically injected here -->
+      </div>
+      
+      <!-- Empty States -->
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <div class="empty-icon">📖</div>
+        <p class="empty-title">Your vault is empty</p>
+        <p class="empty-desc">Select text on any webpage and press <kbd>Alt + Shift + S</kbd> to save a word.</p>
+      </div>
+
+      <div id="empty-search-state" class="empty-state" style="display: none;">
+        <div class="empty-icon">🔍</div>
+        <p class="empty-title">No matches found</p>
+        <p class="empty-desc">Try searching for a different word or tag.</p>
+      </div>
+    </main>
+
+    <!-- Status Toast Notification -->
+    <div id="toast" class="toast" style="display: none;"></div>
+
+    <!-- Edit Word Dialog Modal -->
+    <div id="edit-modal" class="modal" style="display: none;">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="drag-handle"></div>
+        <div class="modal-header">
+          <h2>Edit Word</h2>
+          <button id="modal-close" class="close-btn">&times;</button>
+        </div>
+        <form id="edit-form" class="modal-form">
+          <input type="hidden" id="edit-id">
+          
+          <div class="form-group">
+            <label for="edit-word">Word</label>
+            <input type="text" id="edit-word" readonly disabled>
+          </div>
+
+          <div class="form-group">
+            <label for="edit-meaning">Meaning</label>
+            <textarea id="edit-meaning" rows="2" placeholder="Define the word..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="edit-synonyms">Synonyms</label>
+            <input type="text" id="edit-synonyms" placeholder="e.g. happy, joyful, cheerful">
+          </div>
+
+          <div class="form-group">
+            <label for="edit-tags">Tags (comma-separated)</label>
+            <input type="text" id="edit-tags" placeholder="e.g. academic, nouns, GRE">
+          </div>
+
+          <div class="form-group">
+            <label for="edit-notes">Usage Notes / Examples</label>
+            <textarea id="edit-notes" rows="3" placeholder="Context notes, extra examples..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="edit-status">Learning Status</label>
+            <select id="edit-status" style="width: 100%; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+              <option value="NEW">New</option>
+              <option value="LEARNING">Learning</option>
+              <option value="REVIEW">Review</option>
+              <option value="MASTERED">Mastered</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Collections</label>
+            <div id="edit-collections-list" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); padding: var(--space-2); background-color: var(--bg-inset); border-radius: var(--radius-md); border: 1px solid var(--border);"></div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btn-modal-cancel" class="btn btn-secondary">Cancel</button>
+            <button type="submit" id="btn-modal-save" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
