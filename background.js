@@ -110,9 +110,11 @@ function handleSaveProcess(tab, fallbackWord) {
   // Ask content script for precise selection and surrounding sentence
   const queryContentScript = (isRetry = false) => {
     console.log("WordVault: Message sent (GET_SELECTION) to Tab ID:", tab.id, "isRetry:", isRetry);
-    chrome.tabs.sendMessage(tab.id, { action: "GET_SELECTION" }, (response) => {
+    chrome.tabs.sendMessage(tab.id, { action: "GET_SELECTION", selectedText: fallbackWord }, (response) => {
       let word = fallbackWord || "";
       let sentence = "";
+      let pageTitle = tab.title || "Word Page";
+      let url = tab.url || "";
       let isConnectionError = false;
       
       if (chrome.runtime.lastError) {
@@ -125,6 +127,8 @@ function handleSaveProcess(tab, fallbackWord) {
       if (response) {
         if (response.word) word = response.word;
         if (response.sentence) sentence = response.sentence;
+        if (response.pageTitle) pageTitle = response.pageTitle;
+        if (response.url) url = response.url;
       }
 
       word = word.trim();
@@ -161,7 +165,7 @@ function handleSaveProcess(tab, fallbackWord) {
         return;
       }
 
-      saveAndNotify(tab, word, sentence, tab.title || "Word Page", tab.url || "");
+      saveAndNotify(tab, word, sentence, pageTitle, url);
     });
   };
 
@@ -201,8 +205,15 @@ function saveAndNotify(tab, word, sentence, pageTitle, url) {
       messageText = `✓ Saved "${savedWord.word}"! Dictionary lookup skipped for phrases.`;
     }
     
+    const isRestrictedUrl = url && (
+      url.startsWith("chrome://") || 
+      url.startsWith("chrome-extension://") || 
+      url.startsWith("edge://") || 
+      url.startsWith("about:")
+    );
+
     // Check if we have a valid tab and can send a message to content.js
-    if (tab && tab.id && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://") && !tab.url.startsWith("edge://") && !tab.url.startsWith("about:")) {
+    if (tab && tab.id && !isRestrictedUrl) {
       console.log("WordVault background.js: Sending SHOW_TOAST message to Tab ID:", tab.id);
       chrome.tabs.sendMessage(tab.id, {
         action: "SHOW_TOAST",

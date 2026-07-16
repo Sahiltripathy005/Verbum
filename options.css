@@ -46,17 +46,18 @@
   --radius-round: 9999px;
 
   /* Dark Theme Palette (Default) */
-  --bg-app: #090B10;
-  --bg-card: #12141C;
-  --bg-hover: #1A1D28;
-  --bg-inset: #161822;
-  --text-main: #F9FAFB;
-  --text-muted: #9CA3AF;
-  --text-light: #090B10;
-  --border: rgba(255, 255, 255, 0.03);
-  --border-focus: #818CF8;
-  --primary: #818CF8;
-  --primary-glow: rgba(129, 140, 248, 0.15);
+  --bg-app: #0A0B0F;
+  --bg-card: #13161D;
+  --bg-hover: #171B24;
+  --bg-inset: #0C0E13;
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --text-muted-more: #64748B;
+  --text-light: #0A0B0F;
+  --border: rgba(255, 255, 255, 0.05);
+  --border-focus: #7C8CFF;
+  --primary: #7C8CFF;
+  --primary-glow: rgba(124, 140, 255, 0.12);
   --success: #22C55E;
   --warning: #F59E0B;
   --danger: #EF4444;
@@ -75,6 +76,7 @@
   --bg-inset: #EDEDF2;
   --text-main: #111827;
   --text-muted: #6B7280;
+  --text-muted-more: #9CA3AF;
   --text-light: #FFFFFF;
   --border: rgba(0, 0, 0, 0.04);
   --border-focus: #6366F1;
@@ -298,8 +300,9 @@ body {
 /* Content Columns Layout */
 .workspace-grid {
   display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: var(--space-7);
+  grid-template-columns: 8fr 2fr;
+  gap: var(--space-6);
+  align-items: start;
 }
 
 /* Left Inventory Column */
@@ -307,7 +310,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  overflow: hidden;
+  overflow: visible; /* allows sticky toolbar and headers to remain sticky relative to viewport */
 }
 
 .panel-header {
@@ -342,7 +345,7 @@ body {
   font-family: inherit;
   font-size: var(--font-size-body);
   border: 1px solid var(--border);
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-md);
   background-color: var(--bg-card);
   color: var(--text-main);
   outline: none;
@@ -384,60 +387,100 @@ body {
   transform: translateY(-1px);
 }
 
-/* Spaced card-like table rows */
+/* Premium Natural Table Grid styling */
 .inventory-table-wrapper {
-  overflow-x: auto;
   position: relative;
+  max-height: none; /* No nested scroll containers - uses page scroll */
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background-color: var(--bg-card);
 }
 
 .inventory-table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0 var(--space-3);
+  border-collapse: collapse;
   text-align: left;
 }
 
 .inventory-table th {
-  padding: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   font-weight: var(--font-weight-semibold);
   color: var(--text-muted);
   font-size: var(--font-size-label);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border: none;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-inset);
+  position: sticky;
+  top: 50px; /* offset by the sticky toolbar height */
+  z-index: 10;
+  user-select: none;
 }
 
 .inventory-table td {
-  padding: var(--space-4) var(--space-5);
-  border: none;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
   font-size: var(--font-size-body);
+  color: var(--text-main);
+  transition: background-color var(--t-fast);
   background-color: var(--bg-card);
-  transition: var(--t-medium);
 }
 
 .inventory-table tbody tr {
-  box-shadow: var(--shadow-sm);
-  border-radius: var(--radius-lg);
-  transition: var(--t-medium);
+  cursor: pointer;
+  transition: var(--t-fast);
 }
 
-.inventory-table tbody tr:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+/* Alternating Row Backgrounds */
+.inventory-table tbody tr:nth-child(even) td {
+  background-color: var(--bg-inset);
 }
 
+/* Hover lift and highlighting */
 .inventory-table tbody tr:hover td {
-  background-color: var(--bg-hover);
+  background-color: var(--bg-hover) !important;
 }
 
-.inventory-table tbody tr td:first-child {
-  border-top-left-radius: var(--radius-md);
-  border-bottom-left-radius: var(--radius-md);
+/* Row Selected State Style */
+.inventory-table tbody tr.row-selected td {
+  background-color: var(--primary-glow) !important;
 }
 
-.inventory-table tbody tr td:last-child {
-  border-top-right-radius: var(--radius-md);
-  border-bottom-right-radius: var(--radius-md);
+/* Sticky First Columns */
+.inventory-table .col-select {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  width: 40px;
+  text-align: center;
+}
+
+.inventory-table .col-word {
+  position: sticky;
+  left: 40px;
+  z-index: 4;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-main);
+}
+
+/* Sticky Action Column */
+.inventory-table .col-actions {
+  position: sticky;
+  right: 0;
+  z-index: 4;
+  text-align: center;
+  width: 80px;
+  border-left: 1px solid var(--border);
+}
+
+/* Actions opacity on hover */
+.inventory-table tbody tr .col-actions .table-actions {
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.inventory-table tbody tr:hover .col-actions .table-actions {
+  opacity: 1;
 }
 
 .td-word {
@@ -562,6 +605,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  position: sticky;
+  top: var(--space-4);
+  max-height: calc(100vh - var(--space-8));
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .panel-box {
@@ -1210,3 +1262,493 @@ input:checked + .slider:before {
   color: var(--text-muted);
 }
 
+/* ==================================================
+   UX REFINEMENT: TABLE & ACCORDIONS & INTERACTIVITY
+   ================================================== */
+
+/* Sticky table header container */
+.inventory-table-wrapper {
+  overflow-x: auto;
+  overflow-y: visible; /* no vertical scroll constraint */
+  position: relative;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Fixed column layout widths */
+.inventory-table {
+  table-layout: fixed;
+  width: 100%;
+  border-spacing: 0;
+  border-collapse: collapse;
+}
+
+.inventory-table th {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--bg-app);
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-card);
+  transition: var(--t-fast);
+}
+
+/* Hover effects */
+.inventory-table tbody tr {
+  box-shadow: none;
+  transform: none !important;
+}
+.inventory-table tbody tr:hover td {
+  background-color: var(--bg-hover) !important;
+}
+
+/* Explicit widths for columns */
+.inventory-table th.col-select,
+.inventory-table td.col-select {
+  width: 50px;
+  text-align: center;
+}
+
+.inventory-table th.col-record,
+.inventory-table td.col-record {
+  width: auto;
+}
+
+.inventory-table th.col-actions,
+.inventory-table td.col-actions {
+  width: 100px;
+  text-align: center;
+}
+
+/* Truncations & Wrapping */
+.td-word {
+  word-break: break-word;
+  white-space: normal;
+}
+.td-word strong {
+  display: inline;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.td-meaning {
+  max-width: 100%;
+}
+.td-meaning-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sticky Header */
+.inventory-table thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-card);
+  z-index: 10;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+/* Sticky Action Column */
+.inventory-table th.col-actions {
+  position: sticky;
+  right: 0;
+  background-color: var(--bg-card) !important;
+  z-index: 11;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid var(--border);
+}
+
+.inventory-table td.col-actions {
+  position: sticky;
+  right: 0;
+  background-color: var(--bg-card) !important;
+  z-index: 5;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.04);
+}
+
+.inventory-table tr:hover td.col-actions {
+  background-color: var(--bg-hover) !important;
+}
+
+/* Collapsible Sidebar Accordion Boxes */
+.sidebar-panel .panel-box h3 {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  padding-right: var(--space-5);
+  margin-bottom: var(--space-2);
+  transition: color var(--t-fast);
+}
+
+.sidebar-panel .panel-box h3:hover {
+  color: var(--primary);
+}
+
+.sidebar-panel .panel-box h3::after {
+  content: "▾";
+  position: absolute;
+  right: var(--space-1);
+  top: 50%;
+  transform: translateY(-50%);
+  transition: transform var(--t-fast);
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.sidebar-panel .panel-box.collapsed h3::after {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+.sidebar-panel .panel-box.collapsed > *:not(h3) {
+  display: none !important;
+}
+
+.sidebar-panel .panel-box.collapsed {
+  padding-bottom: var(--space-3);
+  margin-bottom: 0;
+}
+
+/* Pagination Styling */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) 0;
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.pagination-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.pagination-info {
+  font-family: inherit;
+}
+
+.rows-selector {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rows-selector select {
+  padding: 4px 8px;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  outline: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: border-color var(--transition-fast) ease;
+}
+
+.rows-selector select:hover {
+  border-color: var(--border-hover);
+}
+
+.pagination-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.btn-page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+}
+
+.btn-page:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.btn-page:disabled {
+  color: var(--border);
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.page-numbers-container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.btn-page-number {
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+}
+
+.btn-page-number:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.btn-page-number.active {
+  background-color: var(--primary);
+  color: #FFFFFF;
+  border-color: var(--primary);
+}
+
+/* --- Dashboard UX Overhaul Additions --- */
+
+/* View Mode Row Heights */
+.inventory-table.mode-comfortable td {
+  padding: 14px 16px;
+  height: 56px;
+}
+.inventory-table.mode-compact td {
+  padding: 8px 12px;
+  height: 44px;
+}
+.inventory-table.mode-dense td {
+  padding: 4px 8px;
+  height: 32px;
+}
+
+/* Column Visibility Controls */
+.inventory-table[data-hide-word="true"] .col-word { display: none !important; }
+.inventory-table[data-hide-meaning="true"] .col-meaning { display: none !important; }
+.inventory-table[data-hide-collections="true"] .col-collections { display: none !important; }
+.inventory-table[data-hide-status="true"] .col-status { display: none !important; }
+.inventory-table[data-hide-source="true"] .col-source { display: none !important; }
+.inventory-table[data-hide-tags="true"] .col-tags { display: none !important; }
+.inventory-table[data-hide-encounters="true"] .col-encounters { display: none !important; }
+.inventory-table[data-hide-lastseen="true"] .col-lastseen { display: none !important; }
+.inventory-table[data-hide-hostname="true"] .col-hostname { display: none !important; }
+
+/* Dropdown Menu Show State */
+.dropdown-menu.show {
+  display: block !important;
+}
+
+/* Accordion States */
+.accordion-panel .panel-content {
+  transition: max-height 0.22s var(--ease-premium), opacity 0.22s var(--ease-premium);
+}
+.accordion-panel.collapsed .panel-content {
+  display: none !important;
+}
+
+/* Search Highlights */
+mark.search-highlight {
+  background-color: rgba(245, 158, 11, 0.25);
+  color: var(--text-main);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* Table Header Sticky Shadow Overlay */
+.inventory-table th::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+  pointer-events: none;
+  background: linear-gradient(rgba(0, 0, 0, 0.05), transparent);
+}
+
+[data-theme="light"] .inventory-table th::after {
+  background: linear-gradient(rgba(0, 0, 0, 0.02), transparent);
+}
+
+/* Sidebar Sticky behavior */
+.sidebar-panel {
+  position: sticky;
+  top: 20px;
+  align-self: start;
+}
+
+/* --- Premium Toolbar Overrides --- */
+.premium-toolbar-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: var(--bg-app);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+#filter-toolbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: var(--space-3) !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+}
+
+#filter-toolbar::-webkit-scrollbar {
+  height: 4px;
+}
+#filter-toolbar::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 2px;
+}
+
+.filter-controls-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: var(--space-2) !important;
+  flex-wrap: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+#bulk-toolbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background-color: var(--primary-glow);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  animation: fadeIn 0.15s linear;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  margin-top: var(--space-2);
+}
+
+/* --- Record Row & Custom View Modes --- */
+.word-record-row {
+  border-bottom: 1px solid var(--border);
+  transition: background-color var(--t-fast);
+  background-color: var(--bg-card);
+}
+
+.word-record-row:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+.word-record-row .table-actions {
+  opacity: 0;
+  transition: opacity var(--t-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.word-record-row:hover .table-actions {
+  opacity: 1;
+}
+
+.word-record-row .row-select-checkbox {
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+
+.word-record-row:hover .row-select-checkbox,
+.word-record-row.row-selected .row-select-checkbox {
+  opacity: 1;
+}
+
+.word-record-row.row-selected {
+  background-color: rgba(124, 140, 255, 0.08) !important;
+}
+
+/* Comfortable Mode (Default) */
+.inventory-table.mode-comfortable .word-record-row td {
+  padding: 14px 16px;
+  height: 80px;
+}
+
+/* Compact Mode */
+.inventory-table.mode-compact .word-record-row td {
+  padding: 8px 16px;
+  height: 56px;
+}
+
+.inventory-table.mode-compact .word-record-row .record-row-bottom {
+  font-size: 0.75rem !important;
+}
+
+.inventory-table.mode-compact .word-record-row .td-meaning-text {
+  -webkit-line-clamp: 1 !important;
+  max-height: 1.4em !important;
+}
+
+/* Dense Mode */
+.inventory-table.mode-dense .word-record-row td {
+  padding: 4px 16px;
+  height: 44px;
+}
+
+.inventory-table.mode-dense .word-record-row .record-row-bottom {
+  display: none !important; /* Hide row bottom metadata to save vertical space */
+}
+
+.inventory-table.mode-dense .word-record-row .td-meaning-text {
+  -webkit-line-clamp: 1 !important;
+  max-height: 1.4em !important;
+  font-size: 0.85rem !important;
+}
+
+/* --- Collapsible Sidebar Grid Transitions --- */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 8fr 2fr;
+  gap: var(--space-6);
+  transition: grid-template-columns 0.3s var(--ease-premium), gap 0.3s var(--ease-premium);
+}
+
+.dashboard-layout.sidebar-collapsed {
+  grid-template-columns: 1fr 60px;
+  gap: var(--space-3);
+}
+
+.dashboard-layout.sidebar-collapsed .sidebar-panel .panel-box,
+.dashboard-layout.sidebar-collapsed .sidebar-panel .sidebar-toggle-container {
+  display: none !important;
+}
+
+.dashboard-layout.sidebar-collapsed .sidebar-panel .sidebar-collapsed-icons {
+  display: flex !important;
+}
+
+.dashboard-layout.sidebar-collapsed .sidebar-panel {
+  border-left: 1px solid var(--border);
+  height: 100%;
+  min-height: 500px;
+}

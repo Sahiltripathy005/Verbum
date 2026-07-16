@@ -473,13 +473,14 @@ export async function updateWord(id, updatedFields) {
       status = "LEARNING";
     }
 
-    const isUserEdit = (updatedFields.meaning !== undefined || updatedFields.notes !== undefined || updatedFields.status !== undefined || updatedFields.tags !== undefined || updatedFields.collectionIds !== undefined);
+    const isUserEdit = (updatedFields.meaning !== undefined || updatedFields.notes !== undefined || updatedFields.status !== undefined || updatedFields.tags !== undefined || updatedFields.collectionIds !== undefined)
+      && !updatedFields.hasOwnProperty("dictionaryStatus");
 
     words[index] = {
       ...words[index],
       ...updatedFields,
       status,
-      lastSeen: Date.now()
+      lastSeen: isUserEdit ? Date.now() : (words[index].lastSeen || words[index].createdAt || Date.now())
     };
     await saveAllWords(words);
 

@@ -180,13 +180,83 @@ function showInPageToast(message) {
   }, 2000);
 }
 
+// Function to find sentence containing a word when selection is unavailable
+function findSentenceForWord(word) {
+  if (!word) return "";
+  try {
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    let node;
+    while ((node = walker.nextNode())) {
+      const text = node.textContent;
+      const index = text.toLowerCase().indexOf(word.toLowerCase());
+      if (index !== -1) {
+        // Find sentence boundaries in this text node
+        let sentenceStart = 0;
+        for (let i = index - 1; i >= 0; i--) {
+          const char = text[i];
+          if (/[.!?]/.test(char) && (i === text.length - 1 || /\s/.test(text[i + 1]))) {
+            sentenceStart = i + 1;
+            break;
+          }
+        }
+        
+        let sentenceEnd = text.length;
+        for (let i = index + word.length; i < text.length; i++) {
+          const char = text[i];
+          if (/[.!?]/.test(char) && (i === text.length - 1 || /\s/.test(text[i + 1]))) {
+            sentenceEnd = i + 1;
+            break;
+          }
+        }
+        
+        const candidate = text.substring(sentenceStart, sentenceEnd).trim().replace(/\s+/g, ' ');
+        if (candidate.toLowerCase().includes(word.toLowerCase())) {
+          return candidate;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("WordVault: findSentenceForWord failed", err);
+  }
+  return word; // Fallback
+}
+
+let lastContextMenuSelection = null;
+
+// Synchronously capture selection data on right click context menu to avoid losing it
+document.addEventListener("contextmenu", () => {
+  const selectionData = getSelectionData();
+  if (selectionData && selectionData.word) {
+    lastContextMenuSelection = selectionData;
+  } else {
+    lastContextMenuSelection = null;
+  }
+});
+
 // Listen for messages from the background service worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("WordVault Content Script: Received message", message);
   if (message.action === "GET_SELECTION") {
-    const selectionData = getSelectionData();
+    let selectionData = lastContextMenuSelection || getSelectionData();
+    
+    // Clear the stored context selection so it doesn't linger
+    lastContextMenuSelection = null;
+    
+    // If text selection is empty, fallback to the text context passed by the menu
+    if (!selectionData.word && message.selectedText) {
+      selectionData.word = message.selectedText;
+      selectionData.sentence = findSentenceForWord(message.selectedText);
+    } else if (selectionData.word && (!selectionData.sentence || selectionData.sentence === selectionData.word)) {
+      selectionData.sentence = findSentenceForWord(selectionData.word);
+    }
+    
     console.log("WordVault Content Script: Calculated selection data", selectionData);
-    console.log("WordVault Content Script: Calling sendResponse...");
     sendResponse(selectionData);
   } else if (message.action === "SHOW_TOAST") {
     showInPageToast(message.text);

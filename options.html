@@ -34,46 +34,20 @@
       </div>
     </header>
 
-    <!-- Stats Grid -->
-    <section class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon purple">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5V3.5A2.5 2.5 0 0 1 6.5 1H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5z"/></svg>
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">Total Words</span>
-          <h2 id="stat-total" class="stat-value">0</h2>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon yellow">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">Active Learning</span>
-          <h2 id="stat-favorites" class="stat-value">0</h2>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon teal">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01"/></svg>
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">Unique Tags</span>
-          <h2 id="stat-tags" class="stat-value">0</h2>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon blue">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </div>
-        <div class="stat-info">
-          <span class="stat-label">Most Encounters</span>
-          <h2 id="stat-most-enc" class="stat-value">-</h2>
-          <span id="stat-most-enc-count" class="stat-sub">0 times</span>
-        </div>
-      </div>
-    </section>
+    <!-- Hidden Stats Elements for backward compatibility -->
+    <div style="display: none;">
+      <span id="stat-total">0</span>
+      <span id="stat-favorites">0</span>
+      <span id="stat-tags">0</span>
+      <span id="stat-most-enc">-</span>
+      <span id="stat-most-enc-count">0 times</span>
+      <div id="bound-newest"></div>
+      <div id="bound-oldest"></div>
+      <ul id="leaderboard-list"></ul>
+      <div id="tag-cloud"></div>
+      <div id="encounter-distribution"></div>
+      <div id="tag-distribution"></div>
+    </div>
 
     <!-- Main Workspace Grid -->
     <div class="workspace-grid">
@@ -90,58 +64,138 @@
 
         <!-- TAB CONTENT: INVENTORY -->
         <div id="tab-content-inventory" class="tab-content-pane active">
-          <div class="panel-header">
-            <h2>Vocabulary Inventory</h2>
-            <div class="search-filters" style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
-              <div class="search-box">
-                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="search-inventory" placeholder="Search words, meanings, or notes...">
+          <!-- Premium Sticky Toolbar Container -->
+          <div class="premium-toolbar-wrapper">
+            <!-- Standard Filter Toolbar -->
+            <div id="filter-toolbar">
+              <!-- Search box -->
+              <div class="search-box" style="position: relative; display: flex; align-items: center; flex: 2; min-width: 240px;">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 10px; width: 14px; height: 14px; color: var(--text-muted);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-inventory" placeholder="Search words, meanings... (Ctrl+F)" style="width: 100%; padding: var(--space-2) var(--space-4) var(--space-2) 32px; font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); padding-right: 32px;">
+                <button type="button" id="btn-clear-search" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.1rem; display: none; line-height: 1;">&times;</button>
               </div>
-              
-              <select id="filter-collection-select">
-                <option value="">All Collections</option>
-              </select>
 
-              <select id="filter-status-select">
-                <option value="">All Statuses</option>
-                <option value="NEW">New</option>
-                <option value="LEARNING">Learning</option>
-                <option value="REVIEW">Review</option>
-                <option value="MASTERED">Mastered</option>
-              </select>
+              <!-- Filter elements aligned horizontally -->
+              <div class="filter-controls-group">
+                <select id="filter-collection-select" style="padding: var(--space-2) var(--space-3); font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="">All Collections</option>
+                </select>
 
-              <select id="filter-tag-select">
-                <option value="">All Tags</option>
-              </select>
+                <select id="filter-status-select" style="padding: var(--space-2) var(--space-3); font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="">All Statuses</option>
+                  <option value="NEW">New</option>
+                  <option value="LEARNING">Learning</option>
+                  <option value="REVIEW">Review</option>
+                  <option value="MASTERED">Mastered</option>
+                </select>
 
-              <select id="filter-meaning-select">
-                <option value="">All Meanings</option>
-                <option value="missing">Meaning Missing</option>
-                <option value="available">Meaning Available</option>
-              </select>
+                <select id="filter-tag-select" style="padding: var(--space-2) var(--space-3); font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="">All Tags</option>
+                </select>
 
-              <select id="sort-select">
-                <option value="recent">Last Seen (Newest)</option>
-                <option value="created-desc">Date Added (Newest)</option>
-                <option value="created-asc">Date Added (Oldest)</option>
-                <option value="alphabetical">Word (A-Z)</option>
-                <option value="encounters">Encounters (High-Low)</option>
-              </select>
+                <select id="filter-meaning-select" style="padding: var(--space-2) var(--space-3); font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="">All Meanings</option>
+                  <option value="missing">Meaning Missing</option>
+                  <option value="available">Meaning Available</option>
+                </select>
+
+                <select id="sort-select" style="padding: var(--space-2) var(--space-3); font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="recent">Last Seen (Newest)</option>
+                  <option value="created-desc">Date Added (Newest)</option>
+                  <option value="created-asc">Date Added (Oldest)</option>
+                  <option value="alphabetical">Word (A-Z)</option>
+                  <option value="encounters">Encounters (High-Low)</option>
+                </select>
+
+                <!-- View Mode Selector -->
+                <select id="view-mode-select" style="padding: var(--space-2) var(--space-3); font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="comfortable">Comfortable</option>
+                  <option value="compact">Compact</option>
+                  <option value="dense">Dense</option>
+                </select>
+
+                <!-- Column Customization Dropdown -->
+                <div class="dropdown-columns" style="position: relative; display: inline-block;">
+                  <button type="button" id="btn-toggle-columns" class="btn btn-secondary" style="display: flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-3); font-size: 0.85rem; cursor: pointer; border-radius: var(--radius-md);">
+                    <span>Columns</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                  </button>
+                  <div id="columns-menu" class="dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-md); z-index: 100; min-width: 160px; padding: var(--space-2); margin-top: var(--space-1);">
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="word" checked disabled> Word
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="meaning" checked> Meaning
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="collections" checked> Collections
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="status" checked> Status
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="source" checked> Source
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="tags" checked> Tags
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="encounters" checked> Encounters
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="lastseen" checked> Last Seen
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; color: var(--text-main); font-size: 0.85rem; user-select: none;">
+                      <input type="checkbox" class="col-toggle-checkbox" data-col="hostname" checked> Hostname
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bulk Action Toolbar (hidden by default) -->
+            <div id="bulk-toolbar">
+              <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+                <span id="bulk-select-count" style="font-weight: 600; color: var(--primary); font-size: 0.9rem;">0 selected</span>
+                
+                <select id="bulk-move-collection" class="btn btn-secondary" style="padding: 4px var(--space-2); font-size: 0.8rem; background-color: var(--bg-card); cursor: pointer; height: auto; min-height: 28px; line-height: 1;">
+                  <option value="">Move to Collection...</option>
+                </select>
+
+                <select id="bulk-change-status" class="btn btn-secondary" style="padding: 4px var(--space-2); font-size: 0.8rem; background-color: var(--bg-card); cursor: pointer; height: auto; min-height: 28px; line-height: 1;">
+                  <option value="">Change Status...</option>
+                  <option value="NEW">New</option>
+                  <option value="LEARNING">Learning</option>
+                  <option value="REVIEW">Review</option>
+                  <option value="MASTERED">Mastered</option>
+                </select>
+
+                <button type="button" id="btn-bulk-delete" class="btn btn-secondary" style="color: var(--danger); border-color: rgba(239, 68, 68, 0.2); padding: 4px var(--space-3); font-size: 0.8rem; display: flex; align-items: center; gap: 4px; height: auto; min-height: 28px;">
+                  🗑️ Delete
+                </button>
+                
+                <button type="button" id="btn-bulk-enrich" class="btn btn-secondary" style="padding: 4px var(--space-3); font-size: 0.8rem; display: flex; align-items: center; gap: 4px; height: auto; min-height: 28px;">
+                  🔍 Enrich
+                </button>
+                
+                <button type="button" id="btn-bulk-export" class="btn btn-secondary" style="padding: 4px var(--space-3); font-size: 0.8rem; display: flex; align-items: center; gap: 4px; height: auto; min-height: 28px;">
+                  📥 Export
+                </button>
+              </div>
+              <button type="button" id="btn-bulk-clear-selection" class="btn btn-secondary" style="font-size: 0.8rem; padding: 4px var(--space-3); height: auto; min-height: 28px;">
+                Clear Selection
+              </button>
             </div>
           </div>
 
-          <!-- Inventory List -->
-          <div class="inventory-table-wrapper">
-            <table class="inventory-table">
+          <!-- Inventory List Table Wrapper -->
+          <div class="inventory-table-wrapper" style="border: none; border-radius: var(--radius-lg); overflow-x: auto; background-color: var(--bg-card); margin-bottom: var(--space-4);">
+            <table class="inventory-table mode-comfortable" style="width: 100%; border-collapse: collapse; text-align: left;">
               <thead>
                 <tr>
-                  <th width="5%"></th>
-                  <th width="20%">Word</th>
-                  <th width="30%">Meaning</th>
-                  <th width="15%">Tags</th>
-                  <th width="10%">Encounters</th>
-                  <th width="10%">Last Seen</th>
-                  <th width="10%">Actions</th>
+                  <th class="col-select" style="width: 50px; text-align: center; padding: 12px var(--space-3);"><input type="checkbox" id="select-all-rows"></th>
+                  <th class="col-record" style="padding: 12px var(--space-4);">Vocabulary Item</th>
+                  <th class="col-actions" style="width: 100px; text-align: center; padding: 12px var(--space-4);">Actions</th>
                 </tr>
               </thead>
               <tbody id="inventory-tbody">
@@ -149,10 +203,51 @@
               </tbody>
             </table>
             
-            <div id="table-empty-state" class="table-empty" style="display: none;">
-              <div class="empty-icon">📂</div>
-              <h3>No matching vocabulary items</h3>
-              <p>Modify your search criteria or tags filter to see results.</p>
+            <div id="table-empty-state" class="table-empty" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-10) var(--space-6); text-align: center;">
+              <div class="empty-icon" style="font-size: 3rem; margin-bottom: var(--space-4);">📂</div>
+              <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--text-main); margin-bottom: var(--space-2);">Your Vault is empty</h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 320px; margin-bottom: var(--space-6);">Capture new words from websites using right-click or Alt+Shift+S keyboard shortcut to populate your inventory.</p>
+              <button type="button" id="btn-empty-import" class="btn btn-primary" style="font-size: 0.85rem; padding: var(--space-2) var(--space-4);">Import from Backup</button>
+            </div>
+
+            <!-- Empty Filters State -->
+            <div id="table-empty-filters-state" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-10) var(--space-6); text-align: center;">
+              <div style="font-size: 3rem; margin-bottom: var(--space-4);">🔍</div>
+              <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--text-main); margin-bottom: var(--space-2);">No results found</h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 320px; margin-bottom: var(--space-6);">We couldn't find any matches for your active filters or search terms. Try clearing some criteria.</p>
+              <button type="button" id="btn-clear-all-filters" class="btn btn-secondary" style="font-size: 0.85rem; padding: var(--space-2) var(--space-4);">Reset All Filters</button>
+            </div>
+          </div>
+
+          <!-- Pagination Controls -->
+          <div class="pagination-container" id="inventory-pagination" style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) 0; border-top: 1px solid var(--border);">
+            <div class="pagination-left" style="display: flex; align-items: center; gap: var(--space-4);">
+              <span class="pagination-info" id="pagination-info" style="font-size: 0.85rem; color: var(--text-muted);">Showing 0-0 of 0 items</span>
+              <div class="rows-selector" style="display: flex; align-items: center; gap: var(--space-2); font-size: 0.85rem; color: var(--text-muted);">
+                <label for="rows-per-page">Rows:</label>
+                <select id="rows-per-page" style="padding: 2px 6px; font-family: inherit; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;">
+                  <option value="20" selected>20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+            <div class="pagination-right" style="display: flex; align-items: center; gap: var(--space-1);">
+              <button type="button" id="btn-page-first" class="btn-page" title="First Page" style="background: none; border: 1px solid var(--border); color: var(--text-muted); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer;" disabled>
+                &lt;&lt;
+              </button>
+              <button type="button" id="btn-page-prev" class="btn-page" title="Previous Page" style="background: none; border: 1px solid var(--border); color: var(--text-muted); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer;" disabled>
+                &lt;
+              </button>
+              <div class="page-numbers-container" id="page-numbers-container" style="display: flex; align-items: center; gap: 4px;">
+                <!-- Dynamically populated page buttons -->
+              </div>
+              <button type="button" id="btn-page-next" class="btn-page" title="Next Page" style="background: none; border: 1px solid var(--border); color: var(--text-muted); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer;" disabled>
+                &gt;
+              </button>
+              <button type="button" id="btn-page-last" class="btn-page" title="Last Page" style="background: none; border: 1px solid var(--border); color: var(--text-muted); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer;" disabled>
+                &gt;&gt;
+              </button>
             </div>
           </div>
         </div>
@@ -444,190 +539,226 @@
         </div>
       </main>
 
-      <!-- Sidebar Panel: Insights -->
+      <!-- Sidebar Panel: Utility Accordions -->
       <aside class="sidebar-panel">
-        <!-- Dictionary Bulk Operations -->
-        <div class="panel-box">
-          <h3>Dictionary Tools</h3>
-          <button id="btn-bulk-fetch" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: var(--font-size-body); cursor: pointer; gap: 8px;">
-            ✨ Fetch Missing Meanings
+        <div class="sidebar-toggle-container" style="display: flex; justify-content: flex-end; margin-bottom: var(--space-3); width: 100%;">
+          <button type="button" id="btn-collapse-sidebar" class="btn btn-secondary" style="padding: var(--space-1) var(--space-2); font-size: 0.75rem; display: flex; align-items: center; gap: 4px; border: none; background: transparent; cursor: pointer; color: var(--text-muted);" title="Collapse Sidebar">
+            <span>◀</span> Collapse
           </button>
-          <div id="bulk-fetch-progress" style="display: none; margin-top: var(--space-3); font-size: var(--font-size-caption); color: var(--text-muted);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: var(--space-1);">
-              <span>Enriching progress</span>
-              <span id="bulk-progress-text">0 / 0</span>
+        </div>
+
+        <div class="sidebar-collapsed-icons" style="display: none; flex-direction: column; align-items: center; gap: var(--space-4); padding-top: var(--space-4); width: 100%;">
+          <button type="button" id="btn-expand-sidebar" class="btn btn-secondary" style="border: none; background: transparent; font-size: 1.1rem; cursor: pointer; color: var(--text-muted);" title="Expand Sidebar">▶</button>
+          <div class="collapsed-icon-item" data-panel="panel-collections" style="cursor: pointer; font-size: 1.25rem;" title="Collections">📁</div>
+          <div class="collapsed-icon-item" data-panel="panel-progress" style="cursor: pointer; font-size: 1.25rem;" title="Today's Progress">📈</div>
+          <div class="collapsed-icon-item" data-panel="panel-dictionary-tools" style="cursor: pointer; font-size: 1.25rem;" title="Dictionary Tools">📚</div>
+          <div class="collapsed-icon-item" data-panel="panel-settings" style="cursor: pointer; font-size: 1.25rem;" title="Settings">⚙️</div>
+        </div>
+
+        <!-- Collections accordion -->
+        <div class="panel-box accordion-panel" id="panel-collections" style="margin-bottom: var(--space-4);">
+          <div class="panel-header-clickable" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 600;">Collections</h3>
+            <span class="accordion-arrow" style="transition: transform 0.2s ease;">▼</span>
+          </div>
+          <div class="panel-content" style="margin-top: var(--space-3);">
+            <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
+              <input type="text" id="new-collection-name" placeholder="New collection..." style="flex: 1; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main);">
+              <button type="button" id="btn-create-collection" class="btn btn-primary" style="padding: var(--space-2) var(--space-4); font-size: var(--font-size-caption);">Add</button>
             </div>
-            <div style="background-color: var(--bg-app); height: 4px; border-radius: var(--radius-round); overflow: hidden; width: 100%;">
-              <div id="bulk-progress-bar" style="background-color: var(--primary); height: 100%; width: 0%; transition: width 0.2s linear;"></div>
+            <ul id="collections-list" style="list-style: none; display: flex; flex-direction: column; gap: var(--space-2); padding: 0; margin: 0;">
+              <!-- Dynamically populated collection items -->
+            </ul>
+          </div>
+        </div>
+
+        <!-- Today's Progress accordion (collapsed by default) -->
+        <div class="panel-box accordion-panel collapsed" id="panel-progress" style="margin-bottom: var(--space-4);">
+          <div class="panel-header-clickable" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 600;">Today's Progress</h3>
+            <span class="accordion-arrow" style="transition: transform 0.2s ease;">►</span>
+          </div>
+          <div class="panel-content" style="display: none; margin-top: var(--space-3);">
+            <div class="quick-stats-container" style="display: flex; flex-direction: column; gap: var(--space-2);">
+              <div class="quick-stat-widget" style="display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 var(--space-3); background-color: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                  <span style="font-size: 1.1rem;">📥</span>
+                  <span style="font-weight: 500; font-size: 0.85rem;">Captures</span>
+                </div>
+                <span id="quick-stat-captures" style="font-weight: 600; font-family: monospace; font-size: 0.9rem;">0 / 10</span>
+              </div>
+              <div class="quick-stat-widget" style="display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 var(--space-3); background-color: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                  <span style="font-size: 1.1rem;">🔁</span>
+                  <span style="font-weight: 500; font-size: 0.85rem;">Reviews</span>
+                </div>
+                <span id="quick-stat-reviews" style="font-weight: 600; font-family: monospace; font-size: 0.9rem;">0 / 15</span>
+              </div>
+              <div class="quick-stat-widget" style="display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 var(--space-3); background-color: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                  <span style="font-size: 1.1rem;">🔔</span>
+                  <span style="font-weight: 500; font-size: 0.85rem;">Words Due</span>
+                </div>
+                <span id="quick-stat-due" style="font-weight: 600; font-family: monospace; font-size: 0.9rem;">0</span>
+              </div>
+              <div class="quick-stat-widget" style="display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 var(--space-3); background-color: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                  <span style="font-size: 1.1rem;">🔥</span>
+                  <span style="font-weight: 500; font-size: 0.85rem;">Streak</span>
+                </div>
+                <span id="quick-stat-streak" style="font-weight: 600; font-family: monospace; font-size: 0.9rem; color: #ff6b6b;">0 days</span>
+              </div>
+              <div class="quick-stat-widget" style="display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 var(--space-3); background-color: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; gap: var(--space-2);">
+                  <span style="font-size: 1.1rem;">📚</span>
+                  <span style="font-weight: 500; font-size: 0.85rem;">Queue</span>
+                </div>
+                <span id="quick-stat-queue" style="font-weight: 600; font-family: monospace; font-size: 0.9rem;">0 pending</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Collections Manager -->
-        <div class="panel-box">
-          <h3>Collections Manager</h3>
-          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">
-            <input type="text" id="new-collection-name" placeholder="New collection..." style="flex: 1; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main);">
-            <button id="btn-create-collection" class="btn btn-primary" style="padding: var(--space-2) var(--space-4); font-size: var(--font-size-caption);">Add</button>
+        <!-- Dictionary Tools accordion (collapsed by default) -->
+        <div class="panel-box accordion-panel collapsed" id="panel-dictionary-tools" style="margin-bottom: var(--space-4);">
+          <div class="panel-header-clickable" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 600;">Dictionary Tools</h3>
+            <span class="accordion-arrow" style="transition: transform 0.2s ease;">►</span>
           </div>
-          <ul id="collections-list" style="list-style: none; display: flex; flex-direction: column; gap: var(--space-2);">
-            <!-- Dynamically populated collection items -->
-          </ul>
-        </div>
-
-        <!-- Chronological Limits -->
-        <div class="panel-box">
-          <h3>History Bounds</h3>
-          <div class="bounds-list">
-            <div class="bound-item">
-              <span class="bound-label">Newest Addition</span>
-              <div id="bound-newest" class="bound-val">-</div>
+          <div class="panel-content" style="display: none; margin-top: var(--space-3);">
+            <button type="button" id="btn-bulk-fetch" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: var(--font-size-body); cursor: pointer; gap: 8px;">
+              ✨ Fetch Missing Meanings
+            </button>
+            <div id="bulk-fetch-progress" style="display: none; margin-top: var(--space-3); font-size: var(--font-size-caption); color: var(--text-muted);">
+              <div style="display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-2);">
+                <div style="display: flex; justify-content: space-between; font-weight: 500;">
+                  <span id="bulk-status-title">Currently fetching...</span>
+                  <span id="bulk-progress-text">0 / 0</span>
+                </div>
+                <div id="bulk-active-word" style="font-size: 0.85rem; color: var(--text-main); font-weight: 500;">Word: -</div>
+                <div id="bulk-time-remaining" style="font-size: 0.75rem; color: var(--text-muted);">Estimated remaining: -</div>
+              </div>
+              <div style="background-color: var(--bg-app); height: 6px; border-radius: var(--radius-round); overflow: hidden; width: 100%; margin-bottom: var(--space-3);">
+                <div id="bulk-progress-bar" style="background-color: var(--primary); height: 100%; width: 0%; transition: width 0.2s linear;"></div>
+              </div>
+              <div style="display: flex; gap: var(--space-2);">
+                <button type="button" id="btn-bulk-cancel" class="btn btn-secondary" style="flex: 1; padding: 4px var(--space-2); font-size: 0.75rem; justify-content: center; height: auto; min-height: 28px; cursor: pointer;">Cancel</button>
+              </div>
             </div>
-            <div class="bound-item">
-              <span class="bound-label">Oldest Addition</span>
-              <div id="bound-oldest" class="bound-val">-</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Leaderboard -->
-        <div class="panel-box">
-          <h3>Encounter Leaderboard</h3>
-          <ol id="leaderboard-list" class="leaderboard-list">
-            <!-- Dynamically populated -->
-          </ol>
-        </div>
-
-        <!-- Tag Explorer -->
-        <div class="panel-box">
-          <h3>Tag Explorer</h3>
-          <div id="tag-cloud" class="tag-cloud">
-            <!-- Dynamically populated -->
           </div>
         </div>
 
-        <!-- Tag Distribution -->
-        <div class="panel-box">
-          <h3>Tag Distribution</h3>
-          <div id="tag-distribution" class="tag-distribution-list">
-            <!-- Dynamically populated -->
+        <!-- Settings accordion (collapsed by default) -->
+        <div class="panel-box accordion-panel collapsed" id="panel-settings" style="margin-bottom: var(--space-4);">
+          <div class="panel-header-clickable" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 600;">Settings</h3>
+            <span class="accordion-arrow" style="transition: transform 0.2s ease;">►</span>
           </div>
-        </div>
+          <div class="panel-content" style="display: none; margin-top: var(--space-3);">
+            <div class="settings-list" style="display: flex; flex-direction: column; gap: var(--space-3);">
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label">Compact Mode</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-compact">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label">Dark Mode</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-dark">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label">Animations</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-animations">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label">Notifications</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-notifications">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: var(--space-2); margin-top: var(--space-2);">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Focus Last Captured Word</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-workflow-focus">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Highlight Last Captured Word</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-workflow-highlight">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Open Edit Modal Automatically</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-workflow-edit">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-        <!-- Encounter Distribution -->
-        <div class="panel-box">
-          <h3>Encounter Distribution</h3>
-          <div id="encounter-distribution">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-        
-        <!-- Settings Control Panel -->
-        <div class="panel-box">
-          <h3>Settings</h3>
-          <div class="settings-list">
-            <div class="setting-item">
-              <span class="setting-label">Compact Mode</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-compact">
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <span class="setting-label">Dark Mode</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-dark">
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <span class="setting-label">Animations</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-animations">
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <span class="setting-label">Notifications</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-notifications">
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="setting-item" style="border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-3);">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Focus Last Captured Word</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-workflow-focus">
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Highlight Last Captured Word</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-workflow-highlight">
-                <span class="slider round"></span>
-              </label>
-            </div>
-            <div class="setting-item">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Workflow: Open Edit Modal Automatically</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-workflow-edit">
-                <span class="slider round"></span>
-              </label>
-            </div>
+              <!-- Spaced Repetition Settings -->
+              <div class="setting-item" style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); border-top: 1px solid var(--border); padding-top: var(--space-2); margin-top: var(--space-2);">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Daily Capture Goal</span>
+                <input type="number" id="setting-capture-goal" min="1" max="100" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body);">
+              </div>
+              
+              <div class="setting-item" style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Daily Review Goal</span>
+                <input type="number" id="setting-review-goal" min="1" max="500" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body);">
+              </div>
 
-            <!-- Spaced Repetition Settings -->
-            <div class="setting-item" style="border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-3); flex-direction: column; align-items: flex-start; gap: var(--space-2);">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Daily Capture Goal</span>
-              <input type="number" id="setting-capture-goal" min="1" max="100" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body);">
-            </div>
-            
-            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Daily Review Goal</span>
-              <input type="number" id="setting-review-goal" min="1" max="500" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body);">
-            </div>
+              <div class="setting-item" style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Review Sorting Queue</span>
+                <select id="setting-review-order" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
+                  <option value="overdue">Overdue First</option>
+                  <option value="difficulty">Hardest First</option>
+                  <option value="encounters">Highest Encounters First</option>
+                  <option value="newest">Newest First</option>
+                </select>
+              </div>
 
-            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Review Sorting Queue</span>
-              <select id="setting-review-order" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
-                <option value="overdue">Overdue First</option>
-                <option value="difficulty">Hardest First</option>
-                <option value="encounters">Highest Encounters First</option>
-                <option value="newest">Newest First</option>
-              </select>
-            </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: var(--space-2); margin-top: var(--space-2);">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Show Review Badge on Icon</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-show-badge">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-            <div class="setting-item">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Show Review Badge on Icon</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-show-badge">
-                <span class="slider round"></span>
-              </label>
-            </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Badge Achievements Visibility</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-badge-visibility">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-            <div class="setting-item">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Badge Achievements Visibility</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-badge-visibility">
-                <span class="slider round"></span>
-              </label>
-            </div>
+              <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Review Due Notifications</span>
+                <label class="switch">
+                  <input type="checkbox" id="setting-review-notif">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-            <div class="setting-item">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Review Due Notifications</span>
-              <label class="switch">
-                <input type="checkbox" id="setting-review-notif">
-                <span class="slider round"></span>
-              </label>
-            </div>
-
-            <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: var(--space-2);">
-              <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Notification Due Threshold</span>
-              <select id="setting-review-notif-threshold" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
-                <option value="5">5 words due</option>
-                <option value="10">10 words due</option>
-                <option value="20">20 words due</option>
-              </select>
+              <div class="setting-item" style="display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);">
+                <span class="setting-label" style="font-weight: var(--font-weight-semibold);">Notification Due Threshold</span>
+                <select id="setting-review-notif-threshold" style="width: 100%; padding: var(--space-1) var(--space-2); background: var(--bg-inset); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-main); font-family: inherit; font-size: var(--font-size-body); cursor: pointer; outline: none;">
+                  <option value="5">5 words due</option>
+                  <option value="10">10 words due</option>
+                  <option value="20">20 words due</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>

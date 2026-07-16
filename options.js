@@ -27,18 +27,33 @@ let allWords = [];
 let collections = [];
 let searchQuery = "";
 let selectedTagFilter = "";
+let selectedWordIds = new Set();
+let lastCheckedWordId = null;
 let selectedCollectionFilter = "";
 let selectedStatusFilter = "";
 let selectedMeaningFilter = "";
 let sortBy = "recent";
 let toastTimeout = null;
 let isBulkFetching = false;
-
-// Spaced Repetition Review State
-let reviewQueue = [];
-let currentReviewIndex = 0;
-let initialDueCount = 0;
+let bulkFetchCancelled = false;
+let isRatingCard = false;
+let pageWords = [];
 let activeTab = "inventory";
+
+// Pagination State
+let currentPage = 1;
+let rowsPerPage = 20;
+let totalFilteredPages = 1;
+
+// DOM Elements - Pagination
+const elPaginationInfo = document.getElementById("pagination-info");
+const elRowsPerPage = document.getElementById("rows-per-page");
+const elBtnPageFirst = document.getElementById("btn-page-first");
+const elBtnPagePrev = document.getElementById("btn-page-prev");
+const elBtnPageNext = document.getElementById("btn-page-next");
+const elBtnPageLast = document.getElementById("btn-page-last");
+const elPageNumbersContainer = document.getElementById("page-numbers-container");
+const elInventoryPagination = document.getElementById("inventory-pagination");
 
 
 // DOM Elements - Stats
@@ -99,20 +114,53 @@ const elToast = document.getElementById("toast");
 
 // Initialize application
 document.addEventListener("DOMContentLoaded", () => {
-  initEventListeners();
-  loadSettings();
-  loadAndRender();
-  switchTab("inventory");
+  try {
+    initEventListeners();
+  } catch (err) {
+    console.warn("WordVault: Failed to initialize event listeners:", err);
+  }
+
+  try {
+    loadSettings();
+  } catch (err) {
+    console.warn("WordVault: Failed to load settings:", err);
+  }
+
+  try {
+    loadViewModeSetting();
+  } catch (err) {
+    console.warn("WordVault: Failed to load view mode setting:", err);
+  }
+
+  try {
+    loadAndRender();
+  } catch (err) {
+    console.warn("WordVault: Failed to load and render content:", err);
+  }
+
+  try {
+    switchTab("inventory");
+  } catch (err) {
+    console.warn("WordVault: Failed to switch to inventory tab:", err);
+  }
 
   // Listen for changes in storage (synchronized updates)
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace === "local") {
-        if (changes.words) {
-          loadAndRender();
+        if (changes.words && !isBulkFetching) {
+          try {
+            loadAndRender();
+          } catch (err) {
+            console.warn("WordVault: Failed to load and render on words change:", err);
+          }
         }
         if (changes.settings) {
-          applySettings(changes.settings.newValue);
+          try {
+            applySettings(changes.settings.newValue);
+          } catch (err) {
+            console.warn("WordVault: Failed to apply settings change:", err);
+          }
         }
       }
     });
@@ -123,28 +171,50 @@ function initEventListeners() {
   // Filters & Search
   elSearchInventory.addEventListener("input", (e) => {
     searchQuery = e.target.value;
+    currentPage = 1;
     renderInventory();
   });
   elFilterCollectionSelect.addEventListener("change", (e) => {
     selectedCollectionFilter = e.target.value;
+    currentPage = 1;
     renderInventory();
   });
   elFilterStatusSelect.addEventListener("change", (e) => {
     selectedStatusFilter = e.target.value;
+    currentPage = 1;
     renderInventory();
   });
   elFilterTagSelect.addEventListener("change", (e) => {
     selectedTagFilter = e.target.value;
+    currentPage = 1;
     renderInventory();
   });
   elFilterMeaningSelect.addEventListener("change", (e) => {
     selectedMeaningFilter = e.target.value;
+    currentPage = 1;
     renderInventory();
   });
   elSortSelect.addEventListener("change", (e) => {
     sortBy = e.target.value;
+    currentPage = 1;
     renderInventory();
   });
+
+  // Table header Select All checkbox action
+  const selectAllCheckbox = document.getElementById("select-all-rows");
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener("change", (e) => {
+      const isChecked = e.target.checked;
+      pageWords.forEach(w => {
+        if (isChecked) {
+          selectedWordIds.add(w.id);
+        } else {
+          selectedWordIds.delete(w.id);
+        }
+      });
+      renderInventory();
+    });
+  }
 
   // Action Buttons
   elBtnExportAll.addEventListener("click", handleExportAll);
@@ -159,6 +229,12 @@ function initEventListeners() {
 
   // Dictionary Tools bulk operations
   elBtnBulkFetch.addEventListener("click", handleBulkFetch);
+  const elBtnBulkCancel = document.getElementById("btn-bulk-cancel");
+  if (elBtnBulkCancel) {
+    elBtnBulkCancel.addEventListener("click", () => {
+      bulkFetchCancelled = true;
+    });
+  }
 
   // Modal Actions
   elBtnModalCancel.addEventListener("click", closeEditModal);
@@ -238,23 +314,309 @@ function initEventListeners() {
         e.preventDefault();
         rateCurrentCard(4);
       }
-    } else if (e.key === "Enter") {
-      const empty = document.getElementById("card-empty");
-      if (empty && empty.style.display !== "none") {
+    }
+  });
+
+  // Collapsible sidebar accordion panels
+  const accordionHeaders = document.querySelectorAll(".sidebar-panel .accordion-panel .panel-header-clickable");
+  accordionHeaders.forEach(header => {
+    header.addEventListener("click", () => {
+      const panel = header.closest(".accordion-panel");
+      const content = panel.querySelector(".panel-content");
+      const arrow = header.querySelector(".accordion-arrow");
+      
+      const isCollapsed = panel.classList.contains("collapsed");
+      if (isCollapsed) {
+        panel.classList.remove("collapsed");
+        if (content) {
+          content.style.display = "block";
+          content.offsetHeight; // reflow
+        }
+        if (arrow) arrow.textContent = "▼";
+      } else {
+        panel.classList.add("collapsed");
+        if (content) content.style.display = "none";
+        if (arrow) arrow.textContent = "►";
+      }
+    });
+  });
+
+  // View Mode Select listener
+  const viewModeSelect = document.getElementById("view-mode-select");
+  if (viewModeSelect) {
+    viewModeSelect.addEventListener("change", (e) => {
+      const mode = e.target.value;
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        localStorage.setItem("wordvault_viewmode", mode);
+        applyViewMode(mode);
+      } else {
+        chrome.storage.local.set({ viewMode: mode }, () => {
+          applyViewMode(mode);
+        });
+      }
+    });
+  }
+
+  // Keyboard shortcut Ctrl+F to focus search input, and Escape to close edit modal & inline row details
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      let closedSomething = false;
+      if (elEditModal && elEditModal.style.display === "flex") {
+        closeEditModal();
+        closedSomething = true;
+      }
+      document.querySelectorAll(".expanded-row-details").forEach(row => {
+        const parentTr = document.querySelector(`.word-record-row[data-id="${row.getAttribute("data-parent-id")}"]`);
+        if (parentTr) parentTr.classList.remove("row-expanded");
+        row.remove();
+        closedSomething = true;
+      });
+      if (closedSomething) {
         e.preventDefault();
-        startReviewSession();
+      }
+    } else if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+      const activeElement = document.activeElement;
+      // Do not interrupt if typing in a text area or another input field
+      if (activeElement && (activeElement.tagName === "INPUT" || activeElement.tagName === "TEXTAREA")) {
+        return;
+      }
+      e.preventDefault();
+      if (elSearchInventory) {
+        elSearchInventory.focus();
+        elSearchInventory.select();
       }
     }
   });
+
+  // Column Customization dropdown & change listeners
+  initColumnVisibility();
+
+  // Bulk Actions
+  const btnBulkClear = document.getElementById("btn-bulk-clear-selection");
+  if (btnBulkClear) {
+    btnBulkClear.addEventListener("click", () => {
+      selectedWordIds.clear();
+      renderInventory();
+      updateBulkToolbar();
+    });
+  }
+
+  const btnBulkDelete = document.getElementById("btn-bulk-delete");
+  if (btnBulkDelete) {
+    btnBulkDelete.addEventListener("click", async () => {
+      if (selectedWordIds.size === 0) return;
+      if (confirm(`Are you sure you want to permanently delete the ${selectedWordIds.size} selected words?`)) {
+        try {
+          const ids = Array.from(selectedWordIds);
+          for (const id of ids) {
+            await deleteWord(id);
+          }
+          showToast(`Deleted ${ids.length} words`);
+          selectedWordIds.clear();
+          loadAndRender();
+        } catch (err) {
+          showToast("Bulk delete failed: " + err.message);
+        }
+      }
+    });
+  }
+
+  const btnBulkExport = document.getElementById("btn-bulk-export");
+  if (btnBulkExport) {
+    btnBulkExport.addEventListener("click", async () => {
+      if (selectedWordIds.size === 0) return;
+      try {
+        const ids = Array.from(selectedWordIds);
+        const wordsToExport = allWords.filter(w => ids.includes(w.id));
+        const jsonStr = JSON.stringify(wordsToExport, null, 2);
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `wordvault_selection_${ids.length}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast(`Exported ${ids.length} selected words!`);
+      } catch (err) {
+        showToast("Export selection failed: " + err.message);
+      }
+    });
+  }
+
+  const bulkMoveSelect = document.getElementById("bulk-move-collection");
+  if (bulkMoveSelect) {
+    bulkMoveSelect.addEventListener("change", async (e) => {
+      const colId = e.target.value;
+      if (!colId || selectedWordIds.size === 0) return;
+      
+      try {
+        const ids = Array.from(selectedWordIds);
+        for (const id of ids) {
+          await updateWord(id, { collectionIds: [colId] });
+        }
+        showToast(`Moved ${ids.length} words to collection`);
+        selectedWordIds.clear();
+        loadAndRender();
+      } catch (err) {
+        showToast("Bulk move failed: " + err.message);
+      }
+      e.target.value = "";
+    });
+  }
+
+  const bulkStatusSelect = document.getElementById("bulk-change-status");
+  if (bulkStatusSelect) {
+    bulkStatusSelect.addEventListener("change", async (e) => {
+      const status = e.target.value;
+      if (!status || selectedWordIds.size === 0) return;
+      
+      try {
+        const ids = Array.from(selectedWordIds);
+        for (const id of ids) {
+          await updateWord(id, { status });
+        }
+        showToast(`Changed status of ${ids.length} words to ${status}`);
+        selectedWordIds.clear();
+        loadAndRender();
+      } catch (err) {
+        showToast("Bulk status update failed: " + err.message);
+      }
+      e.target.value = "";
+    });
+  }
+
+  // Clear filters buttons
+  const btnClearAllFilters = document.getElementById("btn-clear-all-filters");
+  if (btnClearAllFilters) {
+    btnClearAllFilters.addEventListener("click", () => {
+      elSearchInventory.value = "";
+      searchQuery = "";
+      selectedTagFilter = "";
+      selectedCollectionFilter = "";
+      selectedStatusFilter = "";
+      selectedMeaningFilter = "";
+      elFilterCollectionSelect.value = "";
+      elFilterStatusSelect.value = "";
+      elFilterTagSelect.value = "";
+      elFilterMeaningSelect.value = "";
+      currentPage = 1;
+      loadAndRender();
+    });
+  }
+
+  const btnEmptyImport = document.getElementById("btn-empty-import");
+  if (btnEmptyImport) {
+    btnEmptyImport.addEventListener("click", () => {
+      elFileInputOpt.click();
+    });
+  }
+
+  // Pagination Controls
+  if (elRowsPerPage) {
+    elRowsPerPage.addEventListener("change", (e) => {
+      rowsPerPage = parseInt(e.target.value) || 20;
+      currentPage = 1;
+      renderInventory();
+    });
+  }
+  if (elBtnPageFirst) {
+    elBtnPageFirst.addEventListener("click", () => {
+      currentPage = 1;
+      renderInventory();
+    });
+  }
+  if (elBtnPagePrev) {
+    elBtnPagePrev.addEventListener("click", () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderInventory();
+      }
+    });
+  }
+  if (elBtnPageNext) {
+    elBtnPageNext.addEventListener("click", () => {
+      currentPage++;
+      renderInventory();
+    });
+  }
+  if (elBtnPageLast) {
+    elBtnPageLast.addEventListener("click", () => {
+      currentPage = Math.max(1, Math.ceil(allWords.length / rowsPerPage));
+      renderInventory();
+    });
+  }
+  
+  // Bulk Enrich Action Button
+  const btnBulkEnrich = document.getElementById("btn-bulk-enrich");
+  if (btnBulkEnrich) {
+    btnBulkEnrich.addEventListener("click", handleBulkEnrichSelected);
+  }
+
+  // Sidebar Collapse / Expand support
+  const btnCollapseSidebar = document.getElementById("btn-collapse-sidebar");
+  const btnExpandSidebar = document.getElementById("btn-expand-sidebar");
+  const dashboardLayout = document.querySelector(".dashboard-layout");
+
+  if (btnCollapseSidebar && btnExpandSidebar && dashboardLayout) {
+    // Load persisted state
+    chrome.storage.local.get("sidebarCollapsed", (data) => {
+      if (data && data.sidebarCollapsed) {
+        dashboardLayout.classList.add("sidebar-collapsed");
+      }
+    });
+
+    btnCollapseSidebar.addEventListener("click", () => {
+      dashboardLayout.classList.add("sidebar-collapsed");
+      chrome.storage.local.set({ sidebarCollapsed: true });
+    });
+
+    btnExpandSidebar.addEventListener("click", () => {
+      dashboardLayout.classList.remove("sidebar-collapsed");
+      chrome.storage.local.set({ sidebarCollapsed: false });
+    });
+
+    // Collapsed icons click handlers to open specific accordions and expand sidebar
+    document.querySelectorAll(".collapsed-icon-item").forEach(icon => {
+      icon.addEventListener("click", () => {
+        const panelId = icon.getAttribute("data-panel");
+        dashboardLayout.classList.remove("sidebar-collapsed");
+        chrome.storage.local.set({ sidebarCollapsed: false });
+        
+        // Open the corresponding accordion panel
+        const panel = document.getElementById(panelId);
+        if (panel && panel.classList.contains("collapsed")) {
+          // Trigger click on panel header to expand it
+          const header = panel.querySelector(".panel-header-clickable");
+          if (header) header.click();
+        }
+      });
+    });
+  }
 }
 
 // Load current storage words and trigger comprehensive dashboard rendering
 async function loadAndRender() {
   try {
     allWords = await getAllWords();
+  } catch (error) {
+    console.error("WordVault: Critical failure loading words:", error);
+    showToast("Error loading storage details: " + error.message);
+    allWords = [];
+  }
+
+  try {
     collections = await getAllCollections();
-    
-    // Populate Collection Filter dropdown option elements
+  } catch (error) {
+    console.error("WordVault: Critical failure loading collections:", error);
+    collections = [];
+  }
+
+  // Populate Collection Filter dropdown option elements
+  try {
     const prevColFilterVal = elFilterCollectionSelect.value;
     elFilterCollectionSelect.innerHTML = '<option value="">All Collections</option>';
     collections.forEach(col => {
@@ -264,17 +626,72 @@ async function loadAndRender() {
       elFilterCollectionSelect.appendChild(opt);
     });
     elFilterCollectionSelect.value = prevColFilterVal;
+  } catch (err) {
+    console.warn("WordVault: Failed to populate collection filters:", err);
+  }
 
-    calculateStats();
+  // Populate Bulk Move Collection dropdown options
+  try {
+    const bulkMoveSelect = document.getElementById("bulk-move-collection");
+    if (bulkMoveSelect) {
+      bulkMoveSelect.innerHTML = '<option value="">Move to Collection...</option>';
+      collections.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col.id;
+        opt.textContent = col.name;
+        bulkMoveSelect.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.warn("WordVault: Failed to populate bulk move collection dropdown:", err);
+  }
+
+  try {
+    await calculateStats();
+  } catch (err) {
+    console.warn("WordVault: Failed to calculate stats:", err);
+  }
+
+  try {
     renderTagSelectors();
+  } catch (err) {
+    console.warn("WordVault: Failed to render tag selectors:", err);
+  }
+
+  try {
     renderLeaderboard();
+  } catch (err) {
+    console.warn("WordVault: Failed to render leaderboard:", err);
+  }
+
+  try {
     renderTagCloud();
+  } catch (err) {
+    console.warn("WordVault: Failed to render tag cloud:", err);
+  }
+
+  try {
     renderTagDistribution();
+  } catch (err) {
+    console.warn("WordVault: Failed to render tag distribution:", err);
+  }
+
+  try {
     renderEncounterChart();
+  } catch (err) {
+    console.warn("WordVault: Failed to render encounter chart:", err);
+  }
+
+  try {
     renderCollectionsSidebar();
+  } catch (err) {
+    console.warn("WordVault: Failed to render collections sidebar:", err);
+  }
+
+  try {
     renderInventory();
-  } catch (error) {
-    showToast("Error loading storage details: " + error.message);
+  } catch (err) {
+    console.warn("WordVault: Failed to render inventory:", err);
   }
 }
 
@@ -372,21 +789,55 @@ async function handleBulkFetch() {
   }
 
   isBulkFetching = true;
+  bulkFetchCancelled = false;
+
+  // Lock filter controls to freeze sorting, scroll, and selection
+  elSearchInventory.disabled = true;
+  elFilterCollectionSelect.disabled = true;
+  elFilterStatusSelect.disabled = true;
+  elFilterTagSelect.disabled = true;
+  elFilterMeaningSelect.disabled = true;
+  elSortSelect.disabled = true;
+
   elBtnBulkFetch.disabled = true;
   elBtnBulkFetch.textContent = "⌛ Enriching Words...";
   elBulkFetchProgress.style.display = "block";
+
+  const elStatusTitle = document.getElementById("bulk-status-title");
+  const elActiveWord = document.getElementById("bulk-active-word");
+  const elTimeRemaining = document.getElementById("bulk-time-remaining");
+
+  if (elStatusTitle) elStatusTitle.textContent = "Currently fetching...";
   
   let successCount = 0;
-  let failCount = 0;
+  let notFoundCount = 0;
+  let errorCount = 0;
   const total = wordsToFetch.length;
 
   elBulkProgressText.textContent = `0 / ${total}`;
   elBulkProgressBar.style.width = "0%";
 
+  function formatRemainingTime(ms) {
+    const totalSecs = Math.ceil(ms / 1000);
+    if (totalSecs < 60) return `${totalSecs}s`;
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins}m ${secs}s`;
+  }
+
   for (let i = 0; i < total; i++) {
+    if (bulkFetchCancelled) {
+      break;
+    }
+
     const wordObj = wordsToFetch[i];
-    elBulkProgressText.textContent = `${i + 1} / ${total} (${wordObj.word})`;
+    if (elActiveWord) elActiveWord.textContent = `Word: ${wordObj.word}`;
+    elBulkProgressText.textContent = `${i + 1} / ${total}`;
     elBulkProgressBar.style.width = `${((i + 1) / total) * 100}%`;
+
+    const remainingCount = total - i;
+    const estMs = remainingCount * 1000; // ~1s per word average
+    if (elTimeRemaining) elTimeRemaining.textContent = `Estimated remaining: ${formatRemainingTime(estMs)}`;
 
     try {
       const enriched = await fetchWordDefinition(wordObj.word);
@@ -395,17 +846,23 @@ async function handleBulkFetch() {
         successCount++;
       } else {
         if (enriched) {
-          await updateWord(wordObj.id, enriched); // save updated status
+          await updateWord(wordObj.id, enriched);
+          if (enriched.dictionaryStatus === "not_found" || enriched.dictionaryStatus === "skipped_phrase") {
+            notFoundCount++;
+          } else {
+            errorCount++;
+          }
+        } else {
+          errorCount++;
         }
-        failCount++;
       }
     } catch (err) {
       console.error(`Bulk fetch error for "${wordObj.word}":`, err.message);
-      failCount++;
+      errorCount++;
     }
 
     // Rate-limit: wait 800ms between lookups to be gentle with the API
-    if (i < total - 1) {
+    if (i < total - 1 && !bulkFetchCancelled) {
       await new Promise(resolve => setTimeout(resolve, 800));
     }
   }
@@ -415,12 +872,290 @@ async function handleBulkFetch() {
   elBtnBulkFetch.textContent = "✨ Fetch Missing Meanings";
   elBulkFetchProgress.style.display = "none";
 
-  showToast(`Bulk enrichment completed! Success: ${successCount}, Failed: ${failCount}`);
-  loadAndRender();
+  // Re-enable filter controls
+  elSearchInventory.disabled = false;
+  elFilterCollectionSelect.disabled = false;
+  elFilterStatusSelect.disabled = false;
+  elFilterTagSelect.disabled = false;
+  elFilterMeaningSelect.disabled = false;
+  elSortSelect.disabled = false;
+
+  // Single render and refresh at the end
+  await loadAndRender();
+
+  if (bulkFetchCancelled) {
+    showToast(`Bulk enrichment cancelled! Fetched: ${successCount}, Not Found: ${notFoundCount}, Errors: ${errorCount}`);
+  } else {
+    showToast(`Bulk enrichment completed! Fetched: ${successCount}, Not Found: ${notFoundCount}, Errors: ${errorCount}`);
+  }
+}
+
+// Bulk Enrich Selected Words from Toolbar
+async function handleBulkEnrichSelected() {
+  if (selectedWordIds.size === 0) return;
+  
+  const wordsToFetch = allWords.filter(w => selectedWordIds.has(w.id));
+  const total = wordsToFetch.length;
+  
+  const btnEnrich = document.getElementById("btn-bulk-enrich");
+  const btnDelete = document.getElementById("btn-bulk-delete");
+  const btnExport = document.getElementById("btn-bulk-export");
+  const selectCount = document.getElementById("bulk-select-count");
+  const bulkMove = document.getElementById("bulk-move-collection");
+  const bulkStatus = document.getElementById("bulk-change-status");
+  const btnClear = document.getElementById("btn-bulk-clear-selection");
+
+  // Disable controls during bulk enrich
+  if (btnEnrich) {
+    btnEnrich.disabled = true;
+    btnEnrich.textContent = "⌛ Enriching...";
+  }
+  if (btnDelete) btnDelete.disabled = true;
+  if (btnExport) btnExport.disabled = true;
+  if (bulkMove) bulkMove.disabled = true;
+  if (bulkStatus) bulkStatus.disabled = true;
+  if (btnClear) btnClear.disabled = true;
+
+  // Freeze filters
+  elSearchInventory.disabled = true;
+  elFilterCollectionSelect.disabled = true;
+  elFilterStatusSelect.disabled = true;
+  elFilterTagSelect.disabled = true;
+  elFilterMeaningSelect.disabled = true;
+  elSortSelect.disabled = true;
+
+  let successCount = 0;
+  let notFoundCount = 0;
+  let errorCount = 0;
+
+  for (let i = 0; i < total; i++) {
+    const wordObj = wordsToFetch[i];
+    if (selectCount) {
+      selectCount.textContent = `Enriching: ${wordObj.word} (${i + 1}/${total})`;
+    }
+    
+    try {
+      const enriched = await fetchWordDefinition(wordObj.word);
+      if (enriched) {
+        await updateWord(wordObj.id, enriched);
+        if (enriched.found) {
+          successCount++;
+        } else {
+          notFoundCount++;
+        }
+      } else {
+        errorCount++;
+      }
+    } catch (err) {
+      console.error(`Bulk enrich error for "${wordObj.word}":`, err.message);
+      errorCount++;
+    }
+
+    if (i < total - 1) {
+      await new Promise(resolve => setTimeout(resolve, 800)); // Gentle rate-limiting
+    }
+  }
+
+  // Restore controls
+  if (btnEnrich) {
+    btnEnrich.disabled = false;
+    btnEnrich.textContent = "🔍 Enrich";
+  }
+  if (btnDelete) btnDelete.disabled = false;
+  if (btnExport) btnExport.disabled = false;
+  if (bulkMove) bulkMove.disabled = false;
+  if (bulkStatus) bulkStatus.disabled = false;
+  if (btnClear) btnClear.disabled = false;
+
+  elSearchInventory.disabled = false;
+  elFilterCollectionSelect.disabled = false;
+  elFilterStatusSelect.disabled = false;
+  elFilterTagSelect.disabled = false;
+  elFilterMeaningSelect.disabled = false;
+  elSortSelect.disabled = false;
+
+  showToast(`Enrichment complete! Success: ${successCount}, Not Found: ${notFoundCount}, Errors: ${errorCount}`);
+  
+  // Re-enable and load data
+  selectedWordIds.clear();
+  updateSelectAllCheckboxState();
+  await loadAndRender();
+}
+
+// Inline Row Expansion details
+function toggleInlineRowExpansion(tr, wordObj) {
+  const currentDetailsRow = document.querySelector(`.expanded-row-details[data-parent-id="${wordObj.id}"]`);
+  
+  // Close any other open details rows first
+  document.querySelectorAll(".expanded-row-details").forEach(row => {
+    if (row.getAttribute("data-parent-id") !== wordObj.id) {
+      const parentTr = document.querySelector(`.word-record-row[data-id="${row.getAttribute("data-parent-id")}"]`);
+      if (parentTr) parentTr.classList.remove("row-expanded");
+      row.remove();
+    }
+  });
+
+  if (currentDetailsRow) {
+    // Already expanded, so close it
+    tr.classList.remove("row-expanded");
+    currentDetailsRow.remove();
+  } else {
+    // Expand it
+    tr.classList.add("row-expanded");
+    
+    const detailsTr = document.createElement("tr");
+    detailsTr.className = "expanded-row-details";
+    detailsTr.setAttribute("data-parent-id", wordObj.id);
+    detailsTr.style.backgroundColor = "var(--bg-inset)";
+    detailsTr.style.borderBottom = "1px solid var(--border)";
+    
+    // Format dates
+    const lastReviewDate = wordObj.lastReview ? new Date(wordObj.lastReview).toLocaleString() : 'Never';
+    const nextReviewDate = wordObj.nextReview ? new Date(wordObj.nextReview).toLocaleString() : 'Due Now';
+    const dictStatusText = wordObj.found ? '🟢 Enriched' : (wordObj.dictionaryStatus === "skipped_phrase" ? '🟡 Skipped (Phrase)' : '🔴 Not Found');
+    const easeFactorVal = typeof wordObj.easeFactor === 'number' ? wordObj.easeFactor.toFixed(2) : '2.50';
+    
+    // Construct inline play button if audio exists
+    const audioBtnHtml = wordObj.phoneticsAudio
+      ? `<button class="btn btn-secondary btn-play-audio-detail" data-audio="${escapeHtml(wordObj.phoneticsAudio)}" style="padding: var(--space-2) var(--space-3); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border-radius: var(--radius-md);">🔊 Play Pronunciation</button>`
+      : '<span style="font-size: 0.85rem; color: var(--text-muted); font-style: italic;">No audio available</span>';
+
+    detailsTr.innerHTML = `
+      <td colspan="3" style="padding: 0;">
+        <div class="expanded-row-wrapper" style="overflow: hidden; max-height: 0; opacity: 0; transition: max-height 0.25s var(--ease-premium), opacity 0.25s var(--ease-premium); padding: var(--space-5) var(--space-6);">
+          <div class="row-details-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-6);">
+            
+            <!-- Left Side: Meanings & Context -->
+            <div class="details-left" style="display: flex; flex-direction: column; gap: var(--space-4);">
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Definition</h4>
+                <p style="margin: 0; font-size: 0.95rem; color: var(--text-main); font-weight: 500; line-height: 1.4;">
+                  ${wordObj.partOfSpeech ? `<span style="font-style: italic; color: var(--primary); font-weight: 600; margin-right: 4px;">(${escapeHtml(wordObj.partOfSpeech)})</span>` : ''}
+                  ${escapeHtml(wordObj.meaning || 'No definition available.')}
+                </p>
+              </div>
+
+              ${wordObj.sentence ? `
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Context Sentence</h4>
+                <p style="margin: 0; font-size: 0.9rem; font-style: italic; color: var(--text-main); line-height: 1.4; border-left: 3px solid var(--primary); padding-left: var(--space-3); background: rgba(129, 140, 248, 0.02);">
+                  ${escapeHtml(wordObj.sentence)}
+                </p>
+              </div>
+              ` : ''}
+
+              ${wordObj.notes ? `
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Usage Notes</h4>
+                <p style="margin: 0; font-size: 0.88rem; color: var(--text-main); white-space: pre-wrap; background: rgba(245, 158, 11, 0.03); border: 1px dashed rgba(245, 158, 11, 0.15); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); line-height: 1.4;">
+                  ${escapeHtml(wordObj.notes)}
+                </p>
+              </div>
+              ` : ''}
+
+              ${wordObj.synonyms ? `
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Synonyms</h4>
+                <p style="margin: 0; font-size: 0.88rem; color: var(--text-main); line-height: 1.4;">
+                  ${escapeHtml(wordObj.synonyms)}
+                </p>
+              </div>
+              ` : ''}
+
+              ${wordObj.tags && wordObj.tags.length ? `
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Tags</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: var(--space-2);">
+                  ${wordObj.tags.map(t => `<span style="background: var(--primary-glow); color: var(--primary); font-size: 0.75rem; padding: 2px 8px; border-radius: var(--radius-round); font-weight: 500;">#${escapeHtml(t)}</span>`).join('')}
+                </div>
+              </div>
+              ` : ''}
+              
+              <div style="margin-top: var(--space-2);">
+                ${audioBtnHtml}
+              </div>
+            </div>
+
+            <!-- Right Side: Spaced Repetition Stats & Meta -->
+            <div class="details-right" style="border-left: 1px solid var(--border); padding-left: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5);">
+              <div>
+                <h4 style="margin: 0 0 var(--space-3) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Study Statistics</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); font-size: 0.85rem;">
+                  <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 2px;">Status</span>
+                    <strong style="color: var(--primary); font-size: 0.9rem;">${escapeHtml(wordObj.status || 'NEW')}</strong>
+                  </div>
+                  <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 2px;">Encounters</span>
+                    <strong style="font-size: 0.9rem;">${wordObj.encounters || 1}x</strong>
+                  </div>
+                  <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 2px;">Interval</span>
+                    <strong style="font-size: 0.9rem;">${wordObj.interval ? `${wordObj.interval} days` : '0 days'}</strong>
+                  </div>
+                  <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 2px;">Ease Factor</span>
+                    <strong style="font-size: 0.9rem;">${easeFactorVal}</strong>
+                  </div>
+                  <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 2px;">Review Count</span>
+                    <strong style="font-size: 0.9rem;">${wordObj.reviewCount || 0}</strong>
+                  </div>
+                  <div>
+                    <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 2px;">Stage</span>
+                    <strong style="font-size: 0.9rem;">${escapeHtml(wordObj.learningStage || 'Learning')}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Review History</h4>
+                <div style="font-size: 0.8rem; color: var(--text-main); display: flex; flex-direction: column; gap: var(--space-2);">
+                  <div><span style="color: var(--text-muted);">Last Review:</span> <strong>${lastReviewDate}</strong></div>
+                  <div><span style="color: var(--text-muted);">Next Review:</span> <strong>${nextReviewDate}</strong></div>
+                </div>
+              </div>
+
+              <div>
+                <h4 style="margin: 0 0 var(--space-2) 0; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">Usage Meta</h4>
+                <div style="font-size: 0.8rem; color: var(--text-main); display: flex; flex-direction: column; gap: var(--space-2);">
+                  <div><span style="color: var(--text-muted);">Source:</span> <strong>${escapeHtml(wordObj.sourceName || 'Direct Capture')}</strong></div>
+                  <div><span style="color: var(--text-muted);">Hostname:</span> <strong>${escapeHtml(wordObj.hostname || '-')}</strong></div>
+                  <div><span style="color: var(--text-muted);">Dictionary:</span> <strong>${dictStatusText}</strong></div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+      </td>
+    `;
+    
+    // Insert detailsTr directly after tr
+    tr.parentNode.insertBefore(detailsTr, tr.nextSibling);
+    
+    // Animate detailsTr expansion
+    const wrapper = detailsTr.querySelector(".expanded-row-wrapper");
+    setTimeout(() => {
+      wrapper.style.maxHeight = wrapper.scrollHeight + "px";
+      wrapper.style.opacity = "1";
+    }, 10);
+
+    // Audio listener inside expanded detail
+    const playAudioBtn = detailsTr.querySelector(".btn-play-audio-detail");
+    if (playAudioBtn) {
+      playAudioBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const audioUrl = playAudioBtn.getAttribute("data-audio");
+        const audio = new Audio(audioUrl);
+        audio.play().catch(() => showToast("Audio playback failed"));
+      });
+    }
+  }
 }
 
 // Calculate Dashboard Stats Indicators
-function calculateStats() {
+async function calculateStats() {
   const total = allWords.length;
   elStatTotal.textContent = total;
 
@@ -436,20 +1171,31 @@ function calculateStats() {
   });
   elStatTags.textContent = allTags.size;
 
-  // Most encountered word
+  // Most encountered, newest and oldest words via single pass
   if (total > 0) {
-    const sortedByEnc = [...allWords].sort((a, b) => b.encounters - a.encounters);
-    const topWordObj = sortedByEnc[0];
+    let topWordObj = allWords[0];
+    let newestWordObj = allWords[0];
+    let oldestWordObj = allWords[0];
+
+    for (let i = 1; i < total; i++) {
+      const w = allWords[i];
+      if (w.encounters > topWordObj.encounters) {
+        topWordObj = w;
+      }
+      if (w.createdAt > newestWordObj.createdAt) {
+        newestWordObj = w;
+      }
+      if (w.createdAt < oldestWordObj.createdAt) {
+        oldestWordObj = w;
+      }
+    }
+
     elStatMostEnc.textContent = topWordObj.word;
     elStatMostEncCount.textContent = `${topWordObj.encounters} times`;
 
-    // Newest addition
-    const sortedByNewest = [...allWords].sort((a, b) => b.createdAt - a.createdAt);
-    elBoundNewest.innerHTML = `<strong>${escapeHtml(sortedByNewest[0].word)}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${new Date(sortedByNewest[0].createdAt).toLocaleDateString()}</span>`;
+    elBoundNewest.innerHTML = `<strong>${escapeHtml(newestWordObj.word)}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${new Date(newestWordObj.createdAt).toLocaleDateString()}</span>`;
 
-    // Oldest addition
-    const sortedByOldest = [...allWords].sort((a, b) => a.createdAt - b.createdAt);
-    elBoundOldest.innerHTML = `<strong>${escapeHtml(sortedByOldest[0].word)}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${new Date(sortedByOldest[0].createdAt).toLocaleDateString()}</span>`;
+    elBoundOldest.innerHTML = `<strong>${escapeHtml(oldestWordObj.word)}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${new Date(oldestWordObj.createdAt).toLocaleDateString()}</span>`;
   } else {
     elStatMostEnc.textContent = "-";
     elStatMostEncCount.textContent = "0 times";
@@ -469,6 +1215,33 @@ function calculateStats() {
     } else {
       tabDueCount.style.display = "none";
     }
+  }
+
+  // Update Today's Progress Accordion Widgets
+  try {
+    const history = await getActivityHistory();
+    const streak = await getStreakData();
+    const settings = await getSettings();
+    const capGoal = settings.dailyCaptureGoal || 10;
+    const revGoal = settings.dailyReviewGoal || 15;
+    const todayStart = new Date().setHours(0, 0, 0, 0);
+    const capturesToday = history.filter(item => item.type === "capture" && item.timestamp >= todayStart).length;
+    const reviewsToday = history.filter(item => item.type === "review" && item.timestamp >= todayStart).length;
+    const queuePendingCount = allWords.filter(w => !w.meaning || !w.meaning.trim()).length;
+
+    const elQuickCaptures = document.getElementById("quick-stat-captures");
+    const elQuickReviews = document.getElementById("quick-stat-reviews");
+    const elQuickDue = document.getElementById("quick-stat-due");
+    const elQuickStreak = document.getElementById("quick-stat-streak");
+    const elQuickQueue = document.getElementById("quick-stat-queue");
+
+    if (elQuickCaptures) elQuickCaptures.textContent = `${capturesToday} / ${capGoal}`;
+    if (elQuickReviews) elQuickReviews.textContent = `${reviewsToday} / ${revGoal}`;
+    if (elQuickDue) elQuickDue.textContent = dueCount;
+    if (elQuickStreak) elQuickStreak.textContent = `${streak.currentStreak} day${streak.currentStreak === 1 ? '' : 's'}`;
+    if (elQuickQueue) elQuickQueue.textContent = `${queuePendingCount} pending`;
+  } catch (err) {
+    console.error("Failed to update Today's Progress widgets:", err);
   }
 }
 
@@ -635,31 +1408,134 @@ function renderInventory() {
       break;
   }
 
+  const totalFiltered = filtered.length;
+  totalFilteredPages = Math.ceil(totalFiltered / rowsPerPage) || 1;
+  
+  if (currentPage > totalFilteredPages) {
+    currentPage = totalFilteredPages;
+  }
+
+  // Slicing current page words
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = Math.min(startIndex + rowsPerPage, totalFiltered);
+  pageWords = filtered.slice(startIndex, endIndex);
+
   // Clear Table
   elInventoryTbody.innerHTML = "";
 
-  if (filtered.length === 0) {
-    elTableEmptyState.style.display = "flex";
+  if (totalFiltered === 0) {
+    if (allWords.length === 0) {
+      elTableEmptyState.style.display = "flex";
+      const emptyFiltersState = document.getElementById("table-empty-filters-state");
+      if (emptyFiltersState) emptyFiltersState.style.display = "none";
+    } else {
+      elTableEmptyState.style.display = "none";
+      const emptyFiltersState = document.getElementById("table-empty-filters-state");
+      if (emptyFiltersState) emptyFiltersState.style.display = "flex";
+    }
+    if (elInventoryPagination) elInventoryPagination.style.display = "none";
     return;
   } else {
     elTableEmptyState.style.display = "none";
+    const emptyFiltersState = document.getElementById("table-empty-filters-state");
+    if (emptyFiltersState) emptyFiltersState.style.display = "none";
+    if (elInventoryPagination) elInventoryPagination.style.display = "flex";
   }
 
+  // Update Pagination Controls Info & Button States
+  if (elPaginationInfo) {
+    elPaginationInfo.textContent = `Showing ${totalFiltered === 0 ? 0 : startIndex + 1}-${endIndex} of ${totalFiltered} items`;
+  }
+  if (elBtnPageFirst) elBtnPageFirst.disabled = (currentPage === 1);
+  if (elBtnPagePrev) elBtnPagePrev.disabled = (currentPage === 1);
+  if (elBtnPageNext) elBtnPageNext.disabled = (currentPage === totalFilteredPages);
+  if (elBtnPageLast) elBtnPageLast.disabled = (currentPage === totalFilteredPages);
+
+  // Draw Page Number Buttons
+  if (elPageNumbersContainer) {
+    elPageNumbersContainer.innerHTML = "";
+    
+    let pageRange = [];
+    const maxVisible = 5;
+    if (totalFilteredPages <= maxVisible) {
+      for (let i = 1; i <= totalFilteredPages; i++) pageRange.push(i);
+    } else {
+      pageRange.push(1);
+      
+      let start = Math.max(2, currentPage - 1);
+      let end = Math.min(totalFilteredPages - 1, currentPage + 1);
+      
+      if (currentPage <= 2) {
+        end = 4;
+      } else if (currentPage >= totalFilteredPages - 1) {
+        start = totalFilteredPages - 3;
+      }
+      
+      if (start > 2) {
+        pageRange.push("...");
+      }
+      
+      for (let i = start; i <= end; i++) {
+        pageRange.push(i);
+      }
+      
+      if (end < totalFilteredPages - 1) {
+        pageRange.push("...");
+      }
+      
+      pageRange.push(totalFilteredPages);
+    }
+    
+    pageRange.forEach(p => {
+      if (p === "...") {
+        const span = document.createElement("span");
+        span.style.padding = "0 8px";
+        span.style.color = "var(--text-muted)";
+        span.textContent = "...";
+        elPageNumbersContainer.appendChild(span);
+      } else {
+        const btn = document.createElement("button");
+        btn.className = `btn-page-number ${p === currentPage ? 'active' : ''}`;
+        btn.textContent = p;
+        btn.addEventListener("click", () => {
+          currentPage = p;
+          renderInventory();
+        });
+        elPageNumbersContainer.appendChild(btn);
+      }
+    });
+  }
+
+
+
   // Populate Table Rows
-  filtered.forEach(wordObj => {
+  pageWords.forEach(wordObj => {
     const tr = document.createElement("tr");
+    tr.className = "word-record-row";
     tr.dataset.id = wordObj.id;
+
+    const isRowSelected = selectedWordIds.has(wordObj.id);
+    if (isRowSelected) {
+      tr.classList.add("row-selected");
+    }
 
     // Dynamic status colors
     const statusColors = {
-      "NEW": { bg: "rgba(156, 163, 175, 0.12)", text: "#9CA3AF" },
-      "LEARNING": { bg: "rgba(129, 140, 248, 0.12)", text: "var(--primary)" },
-      "REVIEW": { bg: "rgba(245, 158, 11, 0.12)", text: "var(--warning)" },
-      "MASTERED": { bg: "rgba(34, 197, 94, 0.12)", text: "var(--success)" }
+      "NEW": { bg: "rgba(59, 130, 246, 0.12)", text: "#60A5FA" },
+      "LEARNING": { bg: "rgba(245, 158, 11, 0.12)", text: "#FBBF24" },
+      "REVIEW": { bg: "rgba(139, 92, 246, 0.12)", text: "#A78BFA" },
+      "MASTERED": { bg: "rgba(16, 185, 129, 0.12)", text: "#34D399" }
     };
     const statusStyle = statusColors[wordObj.status || "NEW"] || statusColors["NEW"];
 
+    const statusBadgeHtml = `
+      <span class="status-badge" style="display: inline-flex; align-items: center; justify-content: center; background-color: ${statusStyle.bg}; color: ${statusStyle.text}; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-sm); text-transform: uppercase; letter-spacing: 0.03em; border: 1px solid rgba(255, 255, 255, 0.03);">
+        ${wordObj.status || 'NEW'}
+      </span>
+    `;
+
     const escapedWord = escapeHtml(wordObj.word);
+    const highlightedWord = highlightText(escapedWord, searchQuery);
     
     // Audio pronunciation trigger
     const audioHtml = wordObj.phoneticsAudio
@@ -670,21 +1546,13 @@ function renderInventory() {
       ? `<span style="color: var(--text-muted); font-size: 0.85em; font-family: monospace; margin-left: var(--space-1);">${escapeHtml(wordObj.phonetic)}</span>`
       : '';
 
-    // Source display
-    const sourceHtml = `
-      <div style="font-size: 0.75em; color: var(--text-muted); margin-top: 2px; display: flex; align-items: center; gap: 4px;">
-        ${wordObj.favicon ? `<img src="${wordObj.favicon}" style="width: 10px; height: 10px; border-radius: 1px;" onerror="this.style.display='none'">` : ''}
-        <span>${escapeHtml(wordObj.sourceName || 'Direct Capture')}</span>
-      </div>
-    `;
-
     // Meaning or Fetch trigger
     let meaningContent = '';
     if (wordObj.meaning && wordObj.meaning.trim()) {
       const partOfSpeechHtml = wordObj.partOfSpeech
         ? `<span style="font-style: italic; font-weight: var(--font-weight-medium); color: var(--primary); margin-right: 4px;">(${escapeHtml(wordObj.partOfSpeech)})</span>`
         : '';
-      meaningContent = `<div class="td-meaning-text" title="${escapeHtml(wordObj.meaning)}">${partOfSpeechHtml}${escapeHtml(wordObj.meaning)}</div>`;
+      meaningContent = `<div class="td-meaning-text" title="${escapeHtml(wordObj.meaning)}">${partOfSpeechHtml}${highlightText(escapeHtml(wordObj.meaning), searchQuery)}</div>`;
     } else {
       meaningContent = `
         <div style="display: flex; align-items: center; gap: var(--space-2);">
@@ -698,38 +1566,51 @@ function renderInventory() {
     const colPills = (wordObj.collectionIds || [])
       .map(cid => {
         const col = collections.find(c => c.id === cid);
-        return col ? `<span class="col-badge" style="background-color: var(--bg-inset); color: var(--text-muted); font-size: 0.7em; padding: 1px 4px; border-radius: var(--radius-sm); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 2px;">📁 ${escapeHtml(col.name)}</span>` : '';
+        return col ? `<span class="col-badge" style="background-color: var(--bg-inset); color: var(--text-muted); font-size: 0.7rem; padding: 1px 4px; border-radius: var(--radius-sm); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 2px;">📁 ${escapeHtml(col.name)}</span>` : '';
       })
       .join('');
 
     const lastSeenFormatted = formatDate(wordObj.lastSeen || wordObj.createdAt);
 
     tr.innerHTML = `
-      <td>
-        <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${statusStyle.text};" title="Status: ${wordObj.status || 'NEW'}"></span>
+      <td class="col-select" style="text-align: center; vertical-align: middle;">
+        <input type="checkbox" class="row-select-checkbox" data-id="${wordObj.id}" ${isRowSelected ? 'checked' : ''}>
       </td>
-      <td class="td-word">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <strong>${escapedWord}</strong>
-          ${audioHtml}
-          ${phoneticHtml}
+      <td class="col-record" style="padding: 12px var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border: none;">
+        <!-- Row Top -->
+        <div class="record-row-top" style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;">
+           <span class="col-word" style="display: inline-flex; align-items: center; gap: 6px;">
+              <strong style="font-size: 1.05rem; color: var(--text-main); font-weight: 600;">${highlightedWord}</strong>
+              ${audioHtml}
+              ${phoneticHtml}
+           </span>
+           ${wordObj.partOfSpeech ? `<span class="col-meaning part-of-speech" style="font-style: italic; font-size: 0.85em; color: var(--primary);">(${escapeHtml(wordObj.partOfSpeech)})</span>` : ''}
+           <span class="col-status">${statusBadgeHtml}</span>
         </div>
-        ${sourceHtml}
-      </td>
-      <td class="td-meaning">${meaningContent}</td>
-      <td>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <div class="table-tags">
-            ${(wordObj.tags || []).map(tag => `<span class="table-tag">#${escapeHtml(tag)}</span>`).join('')}
-          </div>
-          <div style="display: flex; flex-wrap: wrap; gap: 2px;">
-            ${colPills}
-          </div>
+        
+        <!-- Row Middle -->
+        <div class="record-row-middle col-meaning" style="margin: 0;">
+           ${meaningContent}
+        </div>
+
+        <!-- Row Bottom -->
+        <div class="record-row-bottom" style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted);">
+           <span class="col-collections" style="display: inline-flex; align-items: center; gap: 4px;">
+              ${colPills}
+           </span>
+           <span class="col-tags" style="display: inline-flex; align-items: center; gap: 4px;">
+              ${(wordObj.tags || []).map(tag => `<span class="table-tag">${highlightText('#' + escapeHtml(tag), searchQuery)}</span>`).join('')}
+           </span>
+           <span class="col-source" style="display: inline-flex; align-items: center; gap: 4px;">
+              ${wordObj.favicon ? `<img src="${wordObj.favicon}" style="width: 10px; height: 10px; border-radius: 1px;" onerror="this.style.display='none'">` : ''}
+              <span>${escapeHtml(wordObj.sourceName || 'Direct Capture')}</span>
+           </span>
+           <span class="col-hostname" style="color: var(--text-muted);">${escapeHtml(wordObj.hostname || '-')}</span>
+           <span class="col-encounters" style="background: var(--bg-inset); padding: 2px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); font-family: monospace;">${wordObj.encounters}x</span>
+           <span class="col-lastseen" title="${new Date(wordObj.lastSeen || wordObj.createdAt).toLocaleString()}">${lastSeenFormatted}</span>
         </div>
       </td>
-      <td class="table-encounters">${wordObj.encounters}x</td>
-      <td><span title="${new Date(wordObj.lastSeen || wordObj.createdAt).toLocaleString()}">${lastSeenFormatted}</span></td>
-      <td>
+      <td class="col-actions" style="text-align: center; vertical-align: middle;">
         <div class="table-actions">
           <button class="act-btn edit" title="Edit entry">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -741,10 +1622,72 @@ function renderInventory() {
       </td>
     `;
 
+    const handleSelection = (id, isChecked, isShift) => {
+      if (isShift && lastCheckedWordId) {
+        const lastIdx = pageWords.findIndex(w => w.id === lastCheckedWordId);
+        const currIdx = pageWords.findIndex(w => w.id === id);
+        if (lastIdx !== -1 && currIdx !== -1) {
+          const start = Math.min(lastIdx, currIdx);
+          const end = Math.max(lastIdx, currIdx);
+          for (let i = start; i <= end; i++) {
+            const wId = pageWords[i].id;
+            if (isChecked) {
+              selectedWordIds.add(wId);
+            } else {
+              selectedWordIds.delete(wId);
+            }
+          }
+          renderInventory();
+          updateBulkToolbar();
+          return;
+        }
+      }
+
+      lastCheckedWordId = id;
+      if (isChecked) {
+        selectedWordIds.add(id);
+        tr.classList.add("row-selected");
+      } else {
+        selectedWordIds.delete(id);
+        tr.classList.remove("row-selected");
+      }
+
+      updateSelectAllCheckboxState();
+      updateBulkToolbar();
+    };
+
+    // Row-level click select or inline expansion
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest("input") || e.target.closest(".table-actions") || e.target.closest(".act-btn")) {
+        return;
+      }
+      
+      if (e.shiftKey) {
+        const checkbox = tr.querySelector(".row-select-checkbox");
+        if (checkbox) {
+          const isChecked = !checkbox.checked;
+          checkbox.checked = isChecked;
+          handleSelection(wordObj.id, isChecked, true);
+        }
+        return;
+      }
+      
+      toggleInlineRowExpansion(tr, wordObj);
+    });
+
+    const checkbox = tr.querySelector(".row-select-checkbox");
+    if (checkbox) {
+      checkbox.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handleSelection(wordObj.id, checkbox.checked, e.shiftKey);
+      });
+    }
+
     // Click handlers
     const playBtn = tr.querySelector(".btn-play-audio-table");
     if (playBtn) {
-      playBtn.addEventListener("click", () => {
+      playBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
         const audio = new Audio(wordObj.phoneticsAudio);
         audio.play().catch(() => showToast("Audio playback failed"));
       });
@@ -752,7 +1695,8 @@ function renderInventory() {
 
     const fetchBtn = tr.querySelector(".btn-fetch-row");
     if (fetchBtn) {
-      fetchBtn.addEventListener("click", async () => {
+      fetchBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
         fetchBtn.textContent = "⌛";
         fetchBtn.disabled = true;
         try {
@@ -782,11 +1726,20 @@ function renderInventory() {
       });
     }
 
-    tr.querySelector(".act-btn.edit").addEventListener("click", () => openEditModal(wordObj));
-    tr.querySelector(".act-btn.delete").addEventListener("click", () => handleDeleteWord(wordObj.id));
+    tr.querySelector(".act-btn.edit").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEditModal(wordObj);
+    });
+    tr.querySelector(".act-btn.delete").addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleDeleteWord(wordObj.id);
+    });
 
     elInventoryTbody.appendChild(tr);
   });
+
+  updateSelectAllCheckboxState();
+  updateBulkToolbar();
 }
 
 // Delete Word from inventory
@@ -1415,27 +2368,40 @@ function revealCardAnswer() {
 }
 
 async function rateCurrentCard(quality) {
+  if (isRatingCard) return;
   if (currentReviewIndex >= reviewQueue.length) return;
+  
+  isRatingCard = true;
+  const rateButtons = document.querySelectorAll(".btn-rate");
+  rateButtons.forEach(btn => btn.disabled = true);
+  
   const word = reviewQueue[currentReviewIndex];
   
-  await submitReview(word.id, quality);
-  
-  currentReviewIndex++;
-  allWords = await getAllWords();
-  
-  calculateStats();
+  try {
+    await submitReview(word.id, quality);
+    
+    currentReviewIndex++;
+    allWords = await getAllWords();
+    
+    await calculateStats();
 
-  const settings = await getSettings();
-  const limit = settings.dailyReviewGoal || 15;
-  const history = await getActivityHistory();
-  const todayStart = new Date().setHours(0, 0, 0, 0);
-  const reviewsToday = history.filter(item => item.type === "review" && item.timestamp >= todayStart);
-  const completedToday = reviewsToday.length;
-  
-  let dueWordsCount = allWords.filter(w => w.nextReview <= Date.now()).length;
-  updateReviewStatsUI(completedToday, limit, dueWordsCount);
+    const settings = await getSettings();
+    const limit = settings.dailyReviewGoal || 15;
+    const history = await getActivityHistory();
+    const todayStart = new Date().setHours(0, 0, 0, 0);
+    const reviewsToday = history.filter(item => item.type === "review" && item.timestamp >= todayStart);
+    const completedToday = reviewsToday.length;
+    
+    let dueWordsCount = allWords.filter(w => w.nextReview <= Date.now()).length;
+    updateReviewStatsUI(completedToday, limit, dueWordsCount);
 
-  showNextCard();
+    showNextCard();
+  } catch (err) {
+    console.error("Failed to submit review:", err);
+  } finally {
+    isRatingCard = false;
+    rateButtons.forEach(btn => btn.disabled = false);
+  }
 }
 
 async function renderAnalyticsTab() {
@@ -1700,4 +2666,149 @@ function formatRelativeTime(timestamp) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+// View Mode support
+function applyViewMode(mode) {
+  const table = document.querySelector(".inventory-table");
+  if (!table) return;
+  table.classList.remove("mode-comfortable", "mode-compact", "mode-dense");
+  table.classList.add(`mode-${mode}`);
+}
+
+function loadViewModeSetting() {
+  const viewModeSelect = document.getElementById("view-mode-select");
+  if (!viewModeSelect) return;
+  
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+    const mode = localStorage.getItem("wordvault_viewmode") || "comfortable";
+    viewModeSelect.value = mode;
+    applyViewMode(mode);
+    return;
+  }
+  
+  chrome.storage.local.get("viewMode", (data) => {
+    const mode = data.viewMode || "comfortable";
+    viewModeSelect.value = mode;
+    applyViewMode(mode);
+  });
+}
+
+// Column visibility customization support
+function initColumnVisibility() {
+  const btnToggleColumns = document.getElementById("btn-toggle-columns");
+  const columnsMenu = document.getElementById("columns-menu");
+  if (btnToggleColumns && columnsMenu) {
+    btnToggleColumns.addEventListener("click", (e) => {
+      e.stopPropagation();
+      columnsMenu.style.display = columnsMenu.style.display === "block" ? "none" : "block";
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener("click", (e) => {
+      if (!columnsMenu.contains(e.target) && e.target !== btnToggleColumns) {
+        columnsMenu.style.display = "none";
+      }
+    });
+  }
+
+  const checkboxes = document.querySelectorAll(".col-toggle-checkbox");
+  checkboxes.forEach(cb => {
+    cb.addEventListener("change", () => {
+      const colName = cb.getAttribute("data-col");
+      const isVisible = cb.checked;
+      applyColumnVisibility(colName, isVisible);
+      saveColumnVisibilitySettings();
+    });
+  });
+  
+  loadColumnVisibilitySettings();
+}
+
+function applyColumnVisibility(colName, isVisible) {
+  const table = document.querySelector(".inventory-table");
+  if (!table) return;
+  if (isVisible) {
+    table.removeAttribute(`data-hide-${colName}`);
+  } else {
+    table.setAttribute(`data-hide-${colName}`, "true");
+  }
+}
+
+function saveColumnVisibilitySettings() {
+  const settings = {};
+  const checkboxes = document.querySelectorAll(".col-toggle-checkbox");
+  checkboxes.forEach(cb => {
+    const colName = cb.getAttribute("data-col");
+    settings[colName] = cb.checked;
+  });
+  
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+    localStorage.setItem("wordvault_col_visibility", JSON.stringify(settings));
+    return;
+  }
+  chrome.storage.local.set({ colVisibility: settings });
+}
+
+function loadColumnVisibilitySettings() {
+  const applyAll = (settings) => {
+    const checkboxes = document.querySelectorAll(".col-toggle-checkbox");
+    checkboxes.forEach(cb => {
+      const colName = cb.getAttribute("data-col");
+      if (settings && settings[colName] !== undefined) {
+        cb.checked = settings[colName];
+        applyColumnVisibility(colName, settings[colName]);
+      }
+    });
+  };
+
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+    const settings = JSON.parse(localStorage.getItem("wordvault_col_visibility") || "{}");
+    applyAll(settings);
+    return;
+  }
+  
+  chrome.storage.local.get("colVisibility", (data) => {
+    applyAll(data.colVisibility);
+  });
+}
+
+// Bulk Actions Toolbar State Sync
+function updateBulkToolbar() {
+  const bulkToolbar = document.getElementById("bulk-toolbar");
+  const selectCount = document.getElementById("bulk-select-count");
+  if (!bulkToolbar || !selectCount) return;
+  
+  const count = selectedWordIds.size;
+  if (count > 0) {
+    bulkToolbar.style.display = "flex";
+    selectCount.textContent = `${count} selected`;
+  } else {
+    bulkToolbar.style.display = "none";
+  }
+}
+
+function updateSelectAllCheckboxState() {
+  const selectAllCheckbox = document.getElementById("select-all-rows");
+  if (!selectAllCheckbox) return;
+  const pageCheckboxes = elInventoryTbody.querySelectorAll(".row-select-checkbox");
+  if (pageCheckboxes.length === 0) {
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+    return;
+  }
+  let checkedCount = 0;
+  pageCheckboxes.forEach(cb => {
+    if (cb.checked) checkedCount++;
+  });
+  selectAllCheckbox.checked = (checkedCount === pageCheckboxes.length);
+  selectAllCheckbox.indeterminate = (checkedCount > 0 && checkedCount < pageCheckboxes.length);
+}
+
+// Search Highlight support
+function highlightText(text, query) {
+  if (!query || !text) return text;
+  const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+  const regex = new RegExp(`(${escapedQuery})`, 'gi');
+  return text.replace(regex, '<mark class="search-highlight">$1</mark>');
 }
