@@ -142,18 +142,59 @@ export function getSmartTagsAndSource(urlStr, pageTitle = "") {
 // COLLECTIONS STORAGE API
 // ----------------------------------------------------
 
+// ----------------------------------------------------
+// COLLECTIONS STORAGE API
+// ----------------------------------------------------
+
+export async function getActiveCollectionId() {
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+    return localStorage.getItem('wordvault_active_col') || "all";
+  }
+  return new Promise((resolve) => {
+    chrome.storage.local.get({ activeCollectionId: "all" }, (result) => {
+      resolve(result.activeCollectionId || "all");
+    });
+  });
+}
+
+export async function setActiveCollectionId(id) {
+  const targetId = id || "all";
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+    localStorage.setItem('wordvault_active_col', targetId);
+    return;
+  }
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ activeCollectionId: targetId }, () => resolve());
+  });
+}
+
 export async function getAllCollections() {
+  let list = [];
   if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
     if (!localStorage.getItem('wordvault_collections')) {
       localStorage.setItem('wordvault_collections', JSON.stringify(defaultCollections));
     }
-    return JSON.parse(localStorage.getItem('wordvault_collections') || '[]');
-  }
-  return new Promise((resolve) => {
-    chrome.storage.local.get({ collections: defaultCollections }, (result) => {
-      resolve(result.collections || defaultCollections);
+    list = JSON.parse(localStorage.getItem('wordvault_collections') || '[]');
+  } else {
+    list = await new Promise((resolve) => {
+      chrome.storage.local.get({ collections: defaultCollections }, (result) => {
+        resolve(result.collections || defaultCollections);
+      });
     });
-  });
+  }
+
+  // Ensure "General" collection always exists
+  let genCol = list.find(c => c.id === "col_general" || c.name.toLowerCase() === "general");
+  if (!genCol) {
+    genCol = { id: "col_general", name: "General", createdAt: Date.now(), parentId: null };
+    list.unshift(genCol);
+    await saveAllCollections(list);
+  } else if (genCol.id !== "col_general") {
+    genCol.id = "col_general";
+    await saveAllCollections(list);
+  }
+
+  return list;
 }
 
 export async function saveAllCollections(collections) {
@@ -170,16 +211,19 @@ export async function saveAllCollections(collections) {
 
 export async function createCollection(name) {
   if (!name || !name.trim()) throw new Error("Invalid collection name");
+  const trimmed = name.trim();
   const collections = await getAllCollections();
   
-  // Prevent duplicate names
-  if (collections.some(c => c.name.toLowerCase() === name.trim().toLowerCase())) {
-    throw new Error("Collection name already exists");
+  // Prevent duplicate names (case-insensitive)
+  if (collections.some(c => c.name.toLowerCase() === trimmed.toLowerCase())) {
+    throw new Error(`Collection "${trimmed}" already exists`);
   }
 
   const newCol = {
     id: "col_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
-    name: name.trim()
+    name: trimmed,
+    createdAt: Date.now(),
+    parentId: null
   };
   collections.push(newCol);
   await saveAllCollections(collections);
@@ -187,32 +231,43 @@ export async function createCollection(name) {
 }
 
 export async function renameCollection(id, newName) {
+  if (id === "col_general") {
+    throw new Error("The General collection cannot be renamed.");
+  }
   if (!newName || !newName.trim()) throw new Error("Invalid collection name");
+  const trimmed = newName.trim();
   const collections = await getAllCollections();
+
+  // Prevent duplicate names (case-insensitive)
+  if (collections.some(c => c.id !== id && c.name.toLowerCase() === trimmed.toLowerCase())) {
+    throw new Error(`Collection "${trimmed}" already exists`);
+  }
   
   const idx = collections.findIndex(c => c.id === id);
   if (idx > -1) {
-    collections[idx].name = newName.trim();
+    collections[idx].name = trimmed;
     await saveAllCollections(collections);
     return collections[idx];
   }
   return null;
 }
 
-export async function deleteCollection(id) {
+export async function deleteCollection(id, targetCollectionId = "col_general") {
+  if (id === "col_general") {
+    throw new Error("The General collection cannot be deleted.");
+  }
+
   const collections = await getAllCollections();
   const filtered = collections.filter(c => c.id !== id);
   await saveAllCollections(filtered);
 
-  // Clean words that were in this collection
+  // Safely move words from deleted collection to General
   const words = await getAllWords();
   let modified = false;
   words.forEach(w => {
-    if (w.collectionIds && w.collectionIds.includes(id)) {
-      w.collectionIds = w.collectionIds.filter(cid => cid !== id);
-      if (w.collectionIds.length === 0) {
-        w.collectionIds = ["col_general"];
-      }
+    if (w.collectionId === id || (Array.isArray(w.collectionIds) && w.collectionIds.includes(id))) {
+      w.collectionId = targetCollectionId;
+      w.collectionIds = [targetCollectionId];
       modified = true;
     }
   });
@@ -220,6 +275,13 @@ export async function deleteCollection(id) {
   if (modified) {
     await saveAllWords(words);
   }
+
+  // If the active collection was deleted, revert active collection to General
+  const activeColId = await getActiveCollectionId();
+  if (activeColId === id) {
+    await setActiveCollectionId("col_general");
+  }
+
   return true;
 }
 
@@ -264,9 +326,17 @@ export async function getAllWords() {
       changed = true;
     }
 
-    // Migrate Collections
-    if (!w.collectionIds || !Array.isArray(w.collectionIds)) {
-      w.collectionIds = ["col_general"];
+    // Migrate Collections to Single Collection Folder model
+    if (!w.collectionId || !w.collectionIds || !Array.isArray(w.collectionIds) || w.collectionIds.length === 0) {
+      w.collectionId = (w.collectionIds && w.collectionIds[0]) ? w.collectionIds[0] : "col_general";
+      w.collectionIds = [w.collectionId];
+      changed = true;
+    } else if (w.collectionIds.length > 1) {
+      w.collectionId = w.collectionIds[0];
+      w.collectionIds = [w.collectionId];
+      changed = true;
+    } else if (!w.collectionId) {
+      w.collectionId = w.collectionIds[0] || "col_general";
       changed = true;
     }
 
@@ -346,8 +416,8 @@ export async function findWord(wordText) {
   return words.find(w => w.word.toLowerCase() === normalized);
 }
 
-export async function saveWord({ word, sentence, pageTitle, url }) {
-  console.log("WordVault LOG (storage.js - saveWord): Sourced arguments. word =", word, "sentence =", sentence, "pageTitle =", pageTitle, "url =", url);
+export async function saveWord({ word, sentence, pageTitle, url, collectionId }) {
+  console.log("WordVault LOG (storage.js - saveWord): Sourced arguments. word =", word, "sentence =", sentence, "pageTitle =", pageTitle, "url =", url, "collectionId =", collectionId);
   if (!word || !word.trim()) {
     console.error("WordVault LOG (storage.js - saveWord): No word provided!");
     throw new Error("No word provided");
@@ -362,6 +432,13 @@ export async function saveWord({ word, sentence, pageTitle, url }) {
   let resultStatus = ""; // "saved" or "updated"
   let savedWordObj = null;
 
+  // Resolve target collection ID (defaults to currently active collection or General)
+  let targetColId = collectionId;
+  if (!targetColId) {
+    const activeColId = await getActiveCollectionId();
+    targetColId = (activeColId && activeColId !== "all") ? activeColId : "col_general";
+  }
+
   if (existingIndex > -1) {
     // Word exists: increment encounters
     words[existingIndex].encounters += 1;
@@ -369,7 +446,6 @@ export async function saveWord({ word, sentence, pageTitle, url }) {
 
     // Auto Status Suggestion Trigger
     if (words[existingIndex].encounters >= 10 && words[existingIndex].status !== "MASTERED") {
-      // Suggesting MASTERED on high-encounter
       words[existingIndex].status = "MASTERED";
     }
 
@@ -402,7 +478,8 @@ export async function saveWord({ word, sentence, pageTitle, url }) {
       meaning: "",
       synonyms: "",
       tags: smart.tags,
-      collectionIds: ["col_general"],
+      collectionId: targetColId,
+      collectionIds: [targetColId],
       status: "NEW",
       encounters: 1,
       hostname: smart.hostname,
@@ -422,7 +499,7 @@ export async function saveWord({ word, sentence, pageTitle, url }) {
       reviewCount: 0,
       easeFactor: 2.5,
       interval: 1,
-      nextReview: Date.now(), // Due immediately!
+      nextReview: Date.now(),
       lastReview: 0,
       learningStage: "New"
     };
@@ -475,7 +552,15 @@ export async function updateWord(id, updatedFields) {
       status = "LEARNING";
     }
 
-    const isUserEdit = (updatedFields.meaning !== undefined || updatedFields.notes !== undefined || updatedFields.status !== undefined || updatedFields.tags !== undefined || updatedFields.collectionIds !== undefined);
+    // Keep single collectionId and collectionIds array in sync
+    if (updatedFields.collectionId) {
+      updatedFields.collectionIds = [updatedFields.collectionId];
+    } else if (updatedFields.collectionIds && Array.isArray(updatedFields.collectionIds) && updatedFields.collectionIds.length > 0) {
+      updatedFields.collectionId = updatedFields.collectionIds[0];
+      updatedFields.collectionIds = [updatedFields.collectionId];
+    }
+
+    const isUserEdit = (updatedFields.meaning !== undefined || updatedFields.notes !== undefined || updatedFields.status !== undefined || updatedFields.tags !== undefined || updatedFields.collectionId !== undefined || updatedFields.collectionIds !== undefined);
 
     words[index] = {
       ...words[index],

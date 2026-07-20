@@ -16,7 +16,9 @@ import {
   getStreakData,
   getActivityHistory,
   getUnlockedBadges,
-  getPersistentReviewCount
+  getPersistentReviewCount,
+  getActiveCollectionId,
+  setActiveCollectionId
 } from './storage.js';
 
 import { fetchWordDefinition } from './dictionary.js';
@@ -27,12 +29,14 @@ let allWords = [];
 let collections = [];
 let searchQuery = "";
 let selectedTagFilter = "";
-let selectedCollectionFilter = "";
+let selectedCollectionFilter = "all";
 let selectedStatusFilter = "";
 let selectedMeaningFilter = "";
 let sortBy = "recent";
 let toastTimeout = null;
 let isBulkFetching = false;
+let selectedWordsSet = new Set();
+let deletingCollectionId = null;
 
 // Spaced Repetition Review State
 let reviewQueue = [];
@@ -100,17 +104,19 @@ const elModalClose = document.getElementById("modal-close");
 const elToast = document.getElementById("toast");
 
 // Initialize application
-document.addEventListener("DOMContentLoaded", () => {
+// Initialize application
+document.addEventListener("DOMContentLoaded", async () => {
   initEventListeners();
   loadSettings();
-  loadAndRender();
+  selectedCollectionFilter = await getActiveCollectionId();
+  await loadAndRender();
   switchTab("inventory");
 
   // Listen for changes in storage (synchronized updates)
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace === "local") {
-        if (changes.words) {
+        if (changes.words || changes.activeCollectionId || changes.collections) {
           loadAndRender();
         }
         if (changes.settings) {
@@ -127,9 +133,14 @@ function initEventListeners() {
     searchQuery = e.target.value;
     renderInventory();
   });
-  elFilterCollectionSelect.addEventListener("change", (e) => {
-    selectedCollectionFilter = e.target.value;
+  elFilterCollectionSelect.addEventListener("change", async (e) => {
+    selectedCollectionFilter = e.target.value || "all";
+    await setActiveCollectionId(selectedCollectionFilter);
+    renderCollectionsSidebar();
+    calculateStats();
     renderInventory();
+    if (activeTab === "review") startReviewSession();
+    if (activeTab === "analytics") renderAnalyticsTab();
   });
   elFilterStatusSelect.addEventListener("change", (e) => {
     selectedStatusFilter = e.target.value;
@@ -154,11 +165,49 @@ function initEventListeners() {
   elBtnImportAll.addEventListener("click", () => elFileInputOpt.click());
   elFileInputOpt.addEventListener("change", handleImportAll);
 
-  // Collections Sidebar actions
-  elBtnCreateCollection.addEventListener("click", handleCreateCollection);
-  elNewCollectionName.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") handleCreateCollection();
-  });
+  // Add Collection Modal Triggers
+  const elBtnOpenAddColModal = document.getElementById("btn-open-add-col-modal");
+  const elBtnCloseAddCol = document.getElementById("btn-close-add-col");
+  const elBtnCancelAddCol = document.getElementById("btn-cancel-add-col");
+  const elAddColForm = document.getElementById("add-collection-form");
+
+  if (elBtnOpenAddColModal) elBtnOpenAddColModal.addEventListener("click", openAddCollectionModal);
+  if (elBtnCloseAddCol) elBtnCloseAddCol.addEventListener("click", closeAddCollectionModal);
+  if (elBtnCancelAddCol) elBtnCancelAddCol.addEventListener("click", closeAddCollectionModal);
+  if (elAddColForm) elAddColForm.addEventListener("submit", handleAddCollectionSubmit);
+
+  // Delete Collection Modal Triggers
+  const elBtnCloseDeleteCol = document.getElementById("btn-close-delete-col");
+  const elBtnCancelDeleteCol = document.getElementById("btn-cancel-delete-col");
+  const elBtnConfirmDeleteCol = document.getElementById("btn-confirm-delete-col");
+
+  if (elBtnCloseDeleteCol) elBtnCloseDeleteCol.addEventListener("click", closeDeleteCollectionModal);
+  if (elBtnCancelDeleteCol) elBtnCancelDeleteCol.addEventListener("click", closeDeleteCollectionModal);
+  if (elBtnConfirmDeleteCol) elBtnConfirmDeleteCol.addEventListener("click", handleConfirmDeleteCollection);
+
+  // Bulk operations toolbar
+  const selectAllCb = document.getElementById("select-all-words");
+  const btnBulkMove = document.getElementById("btn-bulk-move-col");
+  const btnBulkDelete = document.getElementById("btn-bulk-delete");
+
+  if (selectAllCb) {
+    selectAllCb.addEventListener("change", (e) => {
+      const isChecked = e.target.checked;
+      const visibleCheckboxes = document.querySelectorAll(".word-select-checkbox");
+      visibleCheckboxes.forEach(cb => {
+        cb.checked = isChecked;
+        if (isChecked) {
+          selectedWordsSet.add(cb.dataset.id);
+        } else {
+          selectedWordsSet.delete(cb.dataset.id);
+        }
+      });
+      updateBulkToolbarUI();
+    });
+  }
+
+  if (btnBulkMove) btnBulkMove.addEventListener("click", handleBulkMoveCollection);
+  if (btnBulkDelete) btnBulkDelete.addEventListener("click", handleBulkDeleteSelected);
 
   // Dictionary Tools bulk operations
   elBtnBulkFetch.addEventListener("click", handleBulkFetch);
@@ -192,6 +241,8 @@ function initEventListeners() {
       if (elEditModal && elEditModal.style.display === "flex") {
         closeEditModal();
       }
+      closeAddCollectionModal();
+      closeDeleteCollectionModal();
       collapseRowDetails();
     }
   });
@@ -266,18 +317,28 @@ async function loadAndRender() {
   try {
     allWords = await getAllWords();
     collections = await getAllCollections();
+
+    // Ensure active collection is valid
+    const activeStored = await getActiveCollectionId();
+    if (activeStored && activeStored !== "all" && !collections.some(c => c.id === activeStored)) {
+      selectedCollectionFilter = "col_general";
+      await setActiveCollectionId("col_general");
+    } else {
+      selectedCollectionFilter = activeStored || "all";
+    }
     
     // Populate Collection Filter dropdown option elements
-    const prevColFilterVal = elFilterCollectionSelect.value;
-    elFilterCollectionSelect.innerHTML = '<option value="">All Collections</option>';
-    collections.forEach(col => {
-      const opt = document.createElement("option");
-      opt.value = col.id;
-      opt.textContent = col.name;
-      elFilterCollectionSelect.appendChild(opt);
-    });
-    elFilterCollectionSelect.value = prevColFilterVal;
-    selectedCollectionFilter = elFilterCollectionSelect.value;
+    if (elFilterCollectionSelect) {
+      const prevVal = selectedCollectionFilter === "all" ? "" : selectedCollectionFilter;
+      elFilterCollectionSelect.innerHTML = '<option value="">All Collections</option>';
+      collections.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col.id;
+        opt.textContent = col.name;
+        elFilterCollectionSelect.appendChild(opt);
+      });
+      elFilterCollectionSelect.value = prevVal;
+    }
 
     calculateStats();
     renderTagSelectors();
@@ -287,89 +348,190 @@ async function loadAndRender() {
     renderEncounterChart();
     renderCollectionsSidebar();
     renderInventory();
+    updateBulkToolbarUI();
   } catch (error) {
     showToast("Error loading storage details: " + error.message);
   }
 }
 
-// Render Collections Sidebar Panel
+// Render Collections Sidebar Panel (Folder Explorer Layout)
 function renderCollectionsSidebar() {
+  if (!elCollectionsList) return;
   elCollectionsList.innerHTML = "";
+
+  // 1. All Collections Folder Row
+  const totalWordCount = allWords.length;
+  const isAllActive = selectedCollectionFilter === "all" || !selectedCollectionFilter;
+
+  const allItem = document.createElement("div");
+  allItem.className = `collection-folder-item ${isAllActive ? 'active' : ''}`;
+  allItem.innerHTML = `
+    <div class="collection-folder-left">
+      <span class="collection-folder-icon">📂</span>
+      <span class="collection-folder-name">All Collections</span>
+    </div>
+    <div class="collection-folder-right">
+      <span class="collection-count-badge">${totalWordCount}</span>
+    </div>
+  `;
+  allItem.addEventListener("click", async () => {
+    selectedCollectionFilter = "all";
+    await setActiveCollectionId("all");
+    if (elFilterCollectionSelect) elFilterCollectionSelect.value = "";
+    renderCollectionsSidebar();
+    calculateStats();
+    renderInventory();
+    if (activeTab === "review") startReviewSession();
+    if (activeTab === "analytics") renderAnalyticsTab();
+  });
+  elCollectionsList.appendChild(allItem);
+
+  // 2. Individual Collections Folder Rows
   collections.forEach(col => {
-    const li = document.createElement("li");
-    li.style.display = "flex";
-    li.style.alignItems = "center";
-    li.style.justifyContent = "space-between";
-    li.style.gap = "8px";
-    li.style.backgroundColor = "var(--bg-inset)";
-    li.style.padding = "var(--space-2) var(--space-3)";
-    li.style.borderRadius = "var(--radius-md)";
-    li.style.border = "1px solid var(--border)";
-
-    const wordCount = allWords.filter(w => Array.isArray(w.collectionIds) && w.collectionIds.includes(col.id)).length;
-
-    // We block editing of the default general collection
     const isDefault = col.id === "col_general";
+    const isActive = selectedCollectionFilter === col.id;
 
-    li.innerHTML = `
-      <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0;">
-        <span class="collection-name" style="font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(col.name)}">${escapeHtml(col.name)}</span>
-        <span style="font-size: var(--font-size-label); color: var(--text-muted);">${wordCount} words</span>
+    // Count words belonging to this collection
+    const wordCount = allWords.filter(w => w.collectionId === col.id || (Array.isArray(w.collectionIds) && w.collectionIds.includes(col.id))).length;
+
+    const item = document.createElement("div");
+    item.className = `collection-folder-item ${isActive ? 'active' : ''}`;
+    item.innerHTML = `
+      <div class="collection-folder-left">
+        <span class="collection-folder-icon">${isDefault ? '📌' : '📁'}</span>
+        <span class="collection-folder-name" title="${escapeHtml(col.name)}">${escapeHtml(col.name)}</span>
       </div>
-      ${!isDefault ? `
-        <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
-          <button class="btn-rename-col" title="Rename Collection" style="background: none; border: none; cursor: pointer; padding: 2px; font-size: var(--font-size-caption);">✏️</button>
-          <button class="btn-delete-col" title="Delete Collection" style="background: none; border: none; cursor: pointer; padding: 2px; font-size: var(--font-size-caption);">🗑️</button>
-        </div>
-      ` : ''}
+      <div class="collection-folder-right">
+        <span class="collection-count-badge">${wordCount}</span>
+        ${!isDefault ? `
+          <button class="collection-action-btn edit btn-rename-col" title="Rename Collection">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </button>
+          <button class="collection-action-btn delete btn-delete-col" title="Delete Collection">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        ` : ''}
+      </div>
     `;
 
-    // Hook up delete and rename event listeners
+    // Folder select click listener
+    item.addEventListener("click", async (e) => {
+      if (e.target.closest('.collection-action-btn')) return;
+      selectedCollectionFilter = col.id;
+      await setActiveCollectionId(col.id);
+      if (elFilterCollectionSelect) elFilterCollectionSelect.value = col.id;
+      renderCollectionsSidebar();
+      calculateStats();
+      renderInventory();
+      if (activeTab === "review") startReviewSession();
+      if (activeTab === "analytics") renderAnalyticsTab();
+    });
+
     if (!isDefault) {
-      li.querySelector(".btn-rename-col").addEventListener("click", () => handleRenameCollection(col.id, col.name));
-      li.querySelector(".btn-delete-col").addEventListener("click", () => handleDeleteCollection(col.id, col.name));
+      const editBtn = item.querySelector(".btn-rename-col");
+      const delBtn = item.querySelector(".btn-delete-col");
+      if (editBtn) {
+        editBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleRenameCollection(col.id, col.name);
+        });
+      }
+      if (delBtn) {
+        delBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openDeleteCollectionModal(col.id, col.name);
+        });
+      }
     }
 
-    elCollectionsList.appendChild(li);
+    elCollectionsList.appendChild(item);
   });
 }
 
-async function handleCreateCollection() {
-  const name = elNewCollectionName.value.trim();
+// Add Collection Modal logic
+function openAddCollectionModal() {
+  const modal = document.getElementById("add-collection-modal");
+  const input = document.getElementById("input-add-col-name");
+  if (modal) {
+    if (input) input.value = "";
+    modal.style.display = "flex";
+    if (input) setTimeout(() => input.focus(), 50);
+  }
+}
+
+function closeAddCollectionModal() {
+  const modal = document.getElementById("add-collection-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function handleAddCollectionSubmit(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById("input-add-col-name");
+  const name = input ? input.value.trim() : "";
   if (!name) return;
+
   try {
-    await createCollection(name);
-    elNewCollectionName.value = "";
-    showToast(`Created collection: ${name}`);
-    loadAndRender();
+    const newCol = await createCollection(name);
+    closeAddCollectionModal();
+    showToast(`Created collection: ${newCol.name}`);
+    selectedCollectionFilter = newCol.id;
+    await setActiveCollectionId(newCol.id);
+    await loadAndRender();
   } catch (err) {
     showToast(err.message);
   }
 }
 
+// Rename Collection prompt handler
 async function handleRenameCollection(id, oldName) {
   const newName = prompt(`Rename collection "${oldName}" to:`, oldName);
   if (newName === null) return;
   const trimmed = newName.trim();
-  if (!trimmed || trimmed === oldName) return;
+  if (!trimmed || trimmed.toLowerCase() === oldName.toLowerCase()) return;
   try {
     await updateCollection(id, trimmed);
     showToast(`Renamed collection: ${trimmed}`);
-    loadAndRender();
+    await loadAndRender();
   } catch (err) {
     showToast(err.message);
   }
 }
 
-async function handleDeleteCollection(id, name) {
-  if (confirm(`Are you sure you want to delete collection "${name}"? Words in this collection will not be deleted.`)) {
-    try {
-      await deleteCollection(id);
-      showToast(`Deleted collection: ${name}`);
-      loadAndRender();
-    } catch (err) {
-      showToast(err.message);
+// Delete Collection Modal logic
+function openDeleteCollectionModal(id, name) {
+  if (id === "col_general") {
+    showToast("The General collection cannot be deleted.");
+    return;
+  }
+  deletingCollectionId = id;
+  const modal = document.getElementById("delete-collection-modal");
+  const msg = document.getElementById("delete-col-message");
+  if (msg) {
+    msg.innerHTML = `What would you like to do with the words in <strong>"${escapeHtml(name)}"</strong>?`;
+  }
+  if (modal) modal.style.display = "flex";
+}
+
+function closeDeleteCollectionModal() {
+  deletingCollectionId = null;
+  const modal = document.getElementById("delete-collection-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function handleConfirmDeleteCollection() {
+  if (!deletingCollectionId) return;
+  try {
+    const targetCol = "col_general";
+    await deleteCollection(deletingCollectionId, targetCol);
+    showToast("Collection deleted. Words moved to General.");
+    closeDeleteCollectionModal();
+    if (selectedCollectionFilter === deletingCollectionId) {
+      selectedCollectionFilter = "col_general";
+      await setActiveCollectionId("col_general");
     }
+    await loadAndRender();
+  } catch (err) {
+    showToast(err.message);
   }
 }
 
@@ -435,15 +597,20 @@ async function handleBulkFetch() {
 
 // Calculate Dashboard Stats Indicators
 function calculateStats() {
-  const total = allWords.length;
+  let targetWords = allWords;
+  if (selectedCollectionFilter && selectedCollectionFilter !== "all") {
+    targetWords = targetWords.filter(w => w.collectionId === selectedCollectionFilter || (Array.isArray(w.collectionIds) && w.collectionIds.includes(selectedCollectionFilter)));
+  }
+
+  const total = targetWords.length;
   elStatTotal.textContent = total;
 
-  const activeCount = allWords.filter(w => w.status && w.status !== "NEW").length;
+  const activeCount = targetWords.filter(w => w.status && w.status !== "NEW").length;
   elStatFavorites.textContent = activeCount;
 
   // Extract unique tags count
   const allTags = new Set();
-  allWords.forEach(w => {
+  targetWords.forEach(w => {
     if (Array.isArray(w.tags)) {
       w.tags.forEach(tag => allTags.add(tag.toLowerCase()));
     }
@@ -452,17 +619,17 @@ function calculateStats() {
 
   // Most encountered word
   if (total > 0) {
-    const sortedByEnc = [...allWords].sort((a, b) => b.encounters - a.encounters);
+    const sortedByEnc = [...targetWords].sort((a, b) => b.encounters - a.encounters);
     const topWordObj = sortedByEnc[0];
     elStatMostEnc.textContent = topWordObj.word;
     elStatMostEncCount.textContent = `${topWordObj.encounters} times`;
 
     // Newest addition
-    const sortedByNewest = [...allWords].sort((a, b) => b.createdAt - a.createdAt);
+    const sortedByNewest = [...targetWords].sort((a, b) => b.createdAt - a.createdAt);
     elBoundNewest.innerHTML = `<strong>${escapeHtml(sortedByNewest[0].word)}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${new Date(sortedByNewest[0].createdAt).toLocaleDateString()}</span>`;
 
     // Oldest addition
-    const sortedByOldest = [...allWords].sort((a, b) => a.createdAt - b.createdAt);
+    const sortedByOldest = [...targetWords].sort((a, b) => a.createdAt - b.createdAt);
     elBoundOldest.innerHTML = `<strong>${escapeHtml(sortedByOldest[0].word)}</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">${new Date(sortedByOldest[0].createdAt).toLocaleDateString()}</span>`;
   } else {
     elStatMostEnc.textContent = "-";
@@ -473,7 +640,7 @@ function calculateStats() {
 
   // Calculate real-time due review count for tab bubble
   const now = Date.now();
-  const dueWords = allWords.filter(w => w.nextReview <= now);
+  const dueWords = targetWords.filter(w => w.nextReview <= now);
   const dueCount = dueWords.length;
   const tabDueCount = document.getElementById("tab-due-count");
   if (tabDueCount) {
@@ -613,9 +780,9 @@ function renderInventory() {
   }
 
   // 3. Filter by Collection selection
-  if (selectedCollectionFilter) {
+  if (selectedCollectionFilter && selectedCollectionFilter !== "all") {
     filtered = filtered.filter(w => 
-      Array.isArray(w.collectionIds) && w.collectionIds.includes(selectedCollectionFilter)
+      w.collectionId === selectedCollectionFilter || (Array.isArray(w.collectionIds) && w.collectionIds.includes(selectedCollectionFilter))
     );
   }
 
@@ -658,6 +825,7 @@ function renderInventory() {
 
   if (filtered.length === 0) {
     elTableEmptyState.style.display = "flex";
+    updateBulkToolbarUI();
     return;
   } else {
     elTableEmptyState.style.display = "none";
@@ -712,17 +880,19 @@ function renderInventory() {
       `;
     }
 
-    // Get collections folder badges
-    const colPills = (wordObj.collectionIds || [])
-      .map(cid => {
-        const col = collections.find(c => c.id === cid);
-        return col ? `<span class="col-badge" style="background-color: var(--bg-inset); color: var(--text-muted); font-size: 0.7em; padding: 1px 4px; border-radius: var(--radius-sm); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 2px;">📁 ${escapeHtml(col.name)}</span>` : '';
-      })
-      .join('');
+    // Get primary collection badge
+    const curColId = wordObj.collectionId || (wordObj.collectionIds && wordObj.collectionIds[0]) || "col_general";
+    const foundCol = collections.find(c => c.id === curColId);
+    const colName = foundCol ? foundCol.name : "General";
+    const colBadgeHtml = `<span class="col-badge" data-col-id="${curColId}" style="background-color: var(--bg-inset); color: var(--text-muted); font-size: 0.72em; padding: 2px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 3px; cursor: pointer;">📁 ${escapeHtml(colName)}</span>`;
 
     const lastSeenFormatted = formatDate(wordObj.lastSeen || wordObj.createdAt);
+    const isChecked = selectedWordsSet.has(wordObj.id);
 
     tr.innerHTML = `
+      <td>
+        <input type="checkbox" class="word-select-checkbox" data-id="${wordObj.id}" ${isChecked ? 'checked' : ''} style="cursor: pointer; accent-color: var(--primary);">
+      </td>
       <td>
         <span class="status-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: ${statusStyle.text};" title="Status: ${wordObj.status || 'NEW'}"></span>
       </td>
@@ -741,14 +911,17 @@ function renderInventory() {
             ${(wordObj.tags || []).map(tag => `<span class="table-tag">#${escapeHtml(tag)}</span>`).join('')}
           </div>
           <div style="display: flex; flex-wrap: wrap; gap: 2px;">
-            ${colPills}
+            ${colBadgeHtml}
           </div>
         </div>
       </td>
       <td class="table-encounters">${wordObj.encounters}x</td>
       <td><span title="${new Date(wordObj.lastSeen || wordObj.createdAt).toLocaleString()}">${lastSeenFormatted}</span></td>
       <td>
-        <div class="table-actions">
+        <div class="table-actions" style="display: flex; align-items: center; gap: 4px;">
+          <select class="quick-move-select" title="Move to collection" style="background-color: var(--bg-inset); color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.72rem; padding: 2px 4px; outline: none; cursor: pointer; max-width: 80px;">
+            <option value="" disabled selected>Move...</option>
+          </select>
           <button class="act-btn edit" title="Edit entry">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </button>
@@ -758,6 +931,47 @@ function renderInventory() {
         </div>
       </td>
     `;
+
+    // Checkbox listener
+    const rowCb = tr.querySelector(".word-select-checkbox");
+    if (rowCb) {
+      rowCb.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          selectedWordsSet.add(wordObj.id);
+        } else {
+          selectedWordsSet.delete(wordObj.id);
+        }
+        updateBulkToolbarUI();
+      });
+    }
+
+    // Quick move select options
+    const quickMoveSelect = tr.querySelector(".quick-move-select");
+    if (quickMoveSelect) {
+      collections.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col.id;
+        opt.textContent = col.name;
+        if (curColId === col.id) {
+          opt.disabled = true;
+        }
+        quickMoveSelect.appendChild(opt);
+      });
+      quickMoveSelect.addEventListener("change", async (e) => {
+        e.stopPropagation();
+        const targetColId = e.target.value;
+        if (!targetColId) return;
+        const targetCol = collections.find(c => c.id === targetColId);
+        const nameToDisplay = targetCol ? targetCol.name : "Collection";
+        try {
+          await updateWord(wordObj.id, { collectionId: targetColId, collectionIds: [targetColId] });
+          showToast(`Moved "${wordObj.word}" to ${nameToDisplay}`);
+          loadAndRender();
+        } catch (err) {
+          showToast(err.message);
+        }
+      });
+    }
 
     // Click handlers
     const faviconImg = tr.querySelector(".source-favicon");
@@ -828,17 +1042,14 @@ function renderInventory() {
 
     // Add click listeners to collection badges to trigger filter
     tr.querySelectorAll(".col-badge").forEach(colBadge => {
-      colBadge.addEventListener("click", (e) => {
+      colBadge.addEventListener("click", async (e) => {
         e.stopPropagation();
-        const colName = colBadge.textContent.replace(/^📁\s*/, "").trim();
-        const foundCol = collections.find(c => c.name.toLowerCase() === colName.toLowerCase());
-        if (foundCol) {
-          if (selectedCollectionFilter === foundCol.id) {
-            selectedCollectionFilter = "";
-          } else {
-            selectedCollectionFilter = foundCol.id;
-          }
-          elFilterCollectionSelect.value = selectedCollectionFilter;
+        const colId = colBadge.dataset.colId;
+        if (colId) {
+          selectedCollectionFilter = colId;
+          await setActiveCollectionId(colId);
+          renderCollectionsSidebar();
+          calculateStats();
           renderInventory();
         }
       });
@@ -846,7 +1057,7 @@ function renderInventory() {
 
     // Register click listener to toggle details card
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input") || e.target.closest(".act-btn") || e.target.closest(".table-tag") || e.target.closest(".col-badge")) {
+      if (e.target.closest("button") || e.target.closest("a") || e.target.closest("input") || e.target.closest("select") || e.target.closest(".act-btn") || e.target.closest(".table-tag") || e.target.closest(".col-badge")) {
         return;
       }
       toggleRowDetails(wordObj.id, tr);
@@ -854,6 +1065,91 @@ function renderInventory() {
 
     elInventoryTbody.appendChild(tr);
   });
+
+  updateBulkToolbarUI();
+}
+
+// Bulk Operations UI Helper
+function updateBulkToolbarUI() {
+  const bulkToolbar = document.getElementById("bulk-actions-toolbar");
+  const countLabel = document.getElementById("bulk-selected-count");
+  const moveSelect = document.getElementById("bulk-move-collection-select");
+  const selectAllCb = document.getElementById("select-all-words");
+
+  if (!bulkToolbar) return;
+
+  const count = selectedWordsSet.size;
+  if (count > 0) {
+    bulkToolbar.style.display = "flex";
+    if (countLabel) countLabel.textContent = `${count} selected`;
+
+    if (moveSelect) {
+      const currentVal = moveSelect.value;
+      moveSelect.innerHTML = '<option value="" disabled selected>Select collection...</option>';
+      collections.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col.id;
+        opt.textContent = col.name;
+        moveSelect.appendChild(opt);
+      });
+      if (currentVal) moveSelect.value = currentVal;
+    }
+  } else {
+    bulkToolbar.style.display = "none";
+  }
+
+  if (selectAllCb) {
+    const visibleCheckboxes = document.querySelectorAll(".word-select-checkbox");
+    if (visibleCheckboxes.length > 0) {
+      const allChecked = Array.from(visibleCheckboxes).every(cb => cb.checked);
+      selectAllCb.checked = allChecked;
+    } else {
+      selectAllCb.checked = false;
+    }
+  }
+}
+
+async function handleBulkMoveCollection() {
+  const moveSelect = document.getElementById("bulk-move-collection-select");
+  if (!moveSelect || !moveSelect.value) {
+    showToast("Please select a target collection.");
+    return;
+  }
+  const targetColId = moveSelect.value;
+  const targetCol = collections.find(c => c.id === targetColId);
+  const targetName = targetCol ? targetCol.name : "General";
+
+  const idsToMove = Array.from(selectedWordsSet);
+  if (idsToMove.length === 0) return;
+
+  try {
+    for (const id of idsToMove) {
+      await updateWord(id, { collectionId: targetColId, collectionIds: [targetColId] });
+    }
+    showToast(`Moved ${idsToMove.length} word(s) to ${targetName}`);
+    selectedWordsSet.clear();
+    await loadAndRender();
+  } catch (err) {
+    showToast("Bulk move failed: " + err.message);
+  }
+}
+
+async function handleBulkDeleteSelected() {
+  const idsToDelete = Array.from(selectedWordsSet);
+  if (idsToDelete.length === 0) return;
+
+  if (confirm(`Are you sure you want to delete ${idsToDelete.length} selected word(s)?`)) {
+    try {
+      for (const id of idsToDelete) {
+        await deleteWord(id);
+      }
+      showToast(`Deleted ${idsToDelete.length} word(s)`);
+      selectedWordsSet.clear();
+      await loadAndRender();
+    } catch (err) {
+      showToast("Bulk delete failed: " + err.message);
+    }
+  }
 }
 
 // Delete Word from inventory
@@ -868,11 +1164,13 @@ async function handleDeleteWord(id) {
         row.style.transform = "translateY(8px)";
         setTimeout(async () => {
           await deleteWord(id);
+          selectedWordsSet.delete(id);
           showToast(`Deleted: ${wordObj.word}`);
           loadAndRender();
         }, 220);
       } else {
         await deleteWord(id);
+        selectedWordsSet.delete(id);
         showToast(`Deleted: ${wordObj.word}`);
         loadAndRender();
       }
@@ -896,25 +1194,21 @@ function openEditModal(wordObj) {
   if (optMastered) optMastered.textContent = wordObj.encounters >= 10 ? "Mastered (Suggested)" : "Mastered";
   if (optLearning) optLearning.textContent = (wordObj.meaning && wordObj.meaning.trim()) ? "Learning (Suggested)" : "Learning";
 
-  // Build collections checkboxes
-  elEditCollectionsList.innerHTML = "";
-  collections.forEach(col => {
-    const isChecked = Array.isArray(wordObj.collectionIds) && wordObj.collectionIds.includes(col.id);
-    
-    const wrapper = document.createElement("label");
-    wrapper.style.display = "flex";
-    wrapper.style.alignItems = "center";
-    wrapper.style.gap = "6px";
-    wrapper.style.fontSize = "var(--font-size-caption)";
-    wrapper.style.color = "var(--text-main)";
-    wrapper.style.cursor = "pointer";
-
-    wrapper.innerHTML = `
-      <input type="checkbox" name="edit-col-checkbox" value="${col.id}" ${isChecked ? 'checked' : ''} style="cursor: pointer; accent-color: var(--primary);">
-      <span>${escapeHtml(col.name)}</span>
-    `;
-    elEditCollectionsList.appendChild(wrapper);
-  });
+  // Build collection dropdown selection
+  const elEditCollectionSelect = document.getElementById("edit-collection-select");
+  if (elEditCollectionSelect) {
+    elEditCollectionSelect.innerHTML = "";
+    const activeColId = wordObj.collectionId || (Array.isArray(wordObj.collectionIds) && wordObj.collectionIds[0]) || "col_general";
+    collections.forEach(col => {
+      const opt = document.createElement("option");
+      opt.value = col.id;
+      opt.textContent = col.name;
+      if (col.id === activeColId) {
+        opt.selected = true;
+      }
+      elEditCollectionSelect.appendChild(opt);
+    });
+  }
 
   elEditModal.style.display = "flex";
   elEditModal.classList.remove("slide-out");
@@ -945,14 +1239,9 @@ async function saveEditChanges(e) {
   const notes = elEditNotes.value.trim();
   const status = elEditStatus.value;
   
-  // Read checked collections
-  const checkboxes = elEditCollectionsList.querySelectorAll('input[name="edit-col-checkbox"]:checked');
-  const collectionIds = Array.from(checkboxes).map(cb => cb.value);
-
-  // Default to general
-  if (collectionIds.length === 0) {
-    collectionIds.push("col_general");
-  }
+  // Read selected collection
+  const elEditCollectionSelect = document.getElementById("edit-collection-select");
+  const selectedColId = elEditCollectionSelect ? elEditCollectionSelect.value : "col_general";
 
   try {
     await updateWord(id, {
@@ -961,11 +1250,12 @@ async function saveEditChanges(e) {
       tags,
       notes,
       status,
-      collectionIds
+      collectionId: selectedColId,
+      collectionIds: [selectedColId]
     });
     closeEditModal();
     showToast("Changes saved successfully");
-    loadAndRender();
+    await loadAndRender();
   } catch (err) {
     showToast("Failed to save changes: " + err.message);
   }
@@ -1369,7 +1659,11 @@ async function startReviewSession() {
   const reviewsToday = history.filter(item => item.type === "review" && item.timestamp >= todayStart);
   const completedToday = reviewsToday.length;
 
-  let dueWords = allWords.filter(w => w.nextReview <= Date.now());
+  let scopeWords = allWords;
+  if (selectedCollectionFilter && selectedCollectionFilter !== "all") {
+    scopeWords = scopeWords.filter(w => w.collectionId === selectedCollectionFilter || (Array.isArray(w.collectionIds) && w.collectionIds.includes(selectedCollectionFilter)));
+  }
+  let dueWords = scopeWords.filter(w => w.nextReview <= Date.now());
   
   const order = settings.reviewOrder || "overdue";
   if (order === "overdue") {

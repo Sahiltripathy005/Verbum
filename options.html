@@ -130,18 +130,32 @@
             </div>
           </div>
 
+          <!-- Bulk Operations Toolbar -->
+          <div id="bulk-actions-toolbar" style="display: none; align-items: center; justify-content: space-between; background-color: var(--primary-glow); border: 1px solid var(--primary); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-3);">
+            <span id="bulk-selected-count" style="font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--primary);">0 selected</span>
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              <div style="display: flex; align-items: center; gap: var(--space-2);">
+                <span style="font-size: var(--font-size-caption); color: var(--text-main);">Move to Collection:</span>
+                <select id="bulk-move-collection-select" style="background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px var(--space-2); font-family: inherit; font-size: var(--font-size-caption); outline: none; cursor: pointer;"></select>
+                <button id="btn-bulk-move-col" class="btn btn-primary" style="padding: 4px var(--space-3); font-size: var(--font-size-caption);">Move</button>
+              </div>
+              <button id="btn-bulk-delete" class="btn btn-secondary" style="padding: 4px var(--space-3); font-size: var(--font-size-caption); color: var(--danger); border-color: rgba(239, 68, 68, 0.4);">Delete Selected</button>
+            </div>
+          </div>
+
           <!-- Inventory List -->
           <div class="inventory-table-wrapper">
             <table class="inventory-table">
               <thead>
                 <tr>
+                  <th width="3%"><input type="checkbox" id="select-all-words" title="Select All" style="cursor: pointer; accent-color: var(--primary);"></th>
                   <th width="3%"></th>
-                  <th width="25%">Word</th>
-                  <th width="32%">Meaning</th>
-                  <th width="12%">Tags</th>
-                  <th width="11%">Encounters</th>
-                  <th width="11%">Last Seen</th>
-                  <th width="6%">Actions</th>
+                  <th width="24%">Word</th>
+                  <th width="30%">Meaning</th>
+                  <th width="12%">Tags & Collection</th>
+                  <th width="10%">Encounters</th>
+                  <th width="10%">Last Seen</th>
+                  <th width="8%">Actions</th>
                 </tr>
               </thead>
               <tbody id="inventory-tbody">
@@ -463,16 +477,17 @@
           </div>
         </div>
 
-        <!-- Collections Manager -->
+        <!-- Collections Manager (Folder Explorer) -->
         <div class="panel-box">
-          <h3>Collections Manager</h3>
-          <div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3); width: 100%;">
-            <input type="text" id="new-collection-name" placeholder="New collection..." style="flex: 1; min-width: 0; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main);">
-            <button id="btn-create-collection" class="btn btn-primary" style="padding: var(--space-2) var(--space-4); font-size: var(--font-size-caption); flex-shrink: 0;">Add</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+            <h3 style="margin: 0;">Collections</h3>
+            <button id="btn-open-add-col-modal" class="btn btn-secondary" style="padding: 4px var(--space-3); font-size: var(--font-size-caption); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <span>+ New Collection</span>
+            </button>
           </div>
-          <ul id="collections-list" style="list-style: none; display: flex; flex-direction: column; gap: var(--space-2);">
-            <!-- Dynamically populated collection items -->
-          </ul>
+          <div id="collections-list" style="display: flex; flex-direction: column; gap: 6px;">
+            <!-- Dynamically populated collection folder items -->
+          </div>
         </div>
 
         <!-- Chronological Limits -->
@@ -686,8 +701,9 @@
           </div>
 
           <div class="form-group">
-            <label>Collections</label>
-            <div id="edit-collections-list" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); padding: var(--space-2); background-color: var(--bg-inset); border-radius: var(--radius-md); border: 1px solid var(--border);"></div>
+            <label for="edit-collection-select">Collection Folder</label>
+            <select id="edit-collection-select" style="width: 100%; padding: var(--space-2) var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); outline: none; background-color: var(--bg-inset); color: var(--text-main); cursor: pointer;"></select>
+            <div id="edit-collections-list" style="display: none;"></div>
           </div>
 
           <div class="modal-footer">
@@ -695,6 +711,49 @@
             <button type="submit" id="btn-modal-save" class="btn btn-primary">Save Changes</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Add Collection Modal -->
+    <div id="add-collection-modal" class="modal-backdrop-custom" style="display: none;">
+      <div class="modal-box-custom">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="margin: 0; font-size: var(--font-size-heading); color: var(--text-main);">Create New Collection</h2>
+          <button id="btn-close-add-col" class="close-btn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <form id="add-collection-form" style="display: flex; flex-direction: column; gap: var(--space-4);">
+          <div class="form-group" style="display: flex; flex-direction: column; gap: var(--space-2);">
+            <label for="input-add-col-name" style="font-size: var(--font-size-body); color: var(--text-muted);">Collection Name</label>
+            <input type="text" id="input-add-col-name" placeholder="e.g. IndiaBix, Rust, GRE, Books" style="width: 100%; padding: var(--space-3); font-family: inherit; font-size: var(--font-size-body); border: 1px solid var(--border); border-radius: var(--radius-md); background-color: var(--bg-inset); color: var(--text-main); outline: none;" required>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-2);">
+            <button type="button" id="btn-cancel-add-col" class="btn btn-secondary">Cancel</button>
+            <button type="submit" id="btn-submit-add-col" class="btn btn-primary">Create Collection</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Delete Collection Confirmation Modal -->
+    <div id="delete-collection-modal" class="modal-backdrop-custom" style="display: none;">
+      <div class="modal-box-custom">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 style="margin: 0; font-size: var(--font-size-heading); color: var(--danger);">Delete Collection</h2>
+          <button id="btn-close-delete-col" class="close-btn" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+          <p id="delete-col-message" style="font-size: var(--font-size-body); color: var(--text-main);">What would you like to do with the words in this collection?</p>
+          <div style="display: flex; flex-direction: column; gap: var(--space-2); background-color: var(--bg-inset); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border);">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: var(--font-size-body); color: var(--text-main); cursor: pointer;">
+              <input type="radio" name="delete-col-action" value="move_general" checked style="accent-color: var(--primary);">
+              <span>Move all words to <strong>General</strong> (default)</span>
+            </label>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-2);">
+          <button type="button" id="btn-cancel-delete-col" class="btn btn-secondary">Cancel</button>
+          <button type="button" id="btn-confirm-delete-col" class="btn btn-primary" style="background-color: var(--danger); border-color: var(--danger);">Delete Collection</button>
+        </div>
       </div>
     </div>
   </div>
